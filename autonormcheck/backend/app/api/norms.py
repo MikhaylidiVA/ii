@@ -1,111 +1,142 @@
 """
-API роутеры для нормативных документов
+Norms API endpoints.
+Search and manage regulatory documents (GOST, SP, SNiP).
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+import uuid
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import List, Optional
-from uuid import UUID
 
-from app.core.database import get_db_session
-from app.models.database import NormDocument, NormChunk
-
+from app.core.database import get_db
+from app.models.database import NormDocument, NormSection, User
+from app.api.auth import get_current_user
 
 router = APIRouter()
 
 
-@router.get("", response_model=List[dict])
-def list_norm_documents(
-    document_type: Optional[str] = None,
-    status: str = "active",
-    skip: int = 0,
-    limit: int = 50,
-    db: Session = Depends(get_db_session),
+@router.get("/search")
+async def search_norms(
+    query_text: str = Query(..., min_length=2),
+    doc_type: Optional[str] = None,
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Список нормативных документов"""
-    query = db.query(NormDocument).filter(NormDocument.status == status)
+    """
+    Search regulatory documents by text.
     
-    if document_type:
-        query = query.filter(NormDocument.document_type == document_type)
+    - **query_text**: Search query (full-text search)
+    - **doc_type**: Filter by document type (GOST, SP, SNiP, etc.)
+    - **limit**: Maximum number of results
+    """
+    # Full-text search using PostgreSQL tsvector
+    from sqlalchemy import text
     
-    documents = query.order_by(NormDocument.document_name).offset(skip).limit(limit).all()
+    search_query = f"SELECT id, doc_name, doc_type, doc_number, 
+                     ts_rank(to_tsvector('russian', doc_name || ' ' || COALESCE(doc_number, '')), plainto_tsquery('russian', :query)) as rank
+                     FROM norm_documents
+                     WHERE to_tsvector('russian', doc_name || ' ' || COALESCE(doc_number, '')) @@ plainto_tsquery('russian', :query)"
     
-    return [
-        {
-            "id": str(doc.id),
-            "document_id": doc.document_id,
-            "document_name": doc.document_name,
-            "document_type": doc.document_type,
-            "year": doc.year,
-            "status": doc.status,
-            "chunks_count": len(doc.chunks),
-        }
-        for doc in documents
-    ]
-
-
-@router.get("/{document_id}")
-def get_norm_document(
-    document_id: UUID,
-    db: Session = Depends(get_db_session),
-):
-    """Информация о нормативном документе"""
-    doc = db.query(NormDocument).filter(NormDocument.id == document_id).first()
+    if doc_type:
+        search_query += " AND doc_type = :doc_type"
     
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+    search_query += " ORDER BY rank DESC LIMIT :limit"
+    
+    result = db.execute(
+        text(search_query),
+        {"query": query_text, "doc_type": doc_type, "limit": limit}
+    )
+    
+    docs = []
+    for row in result:
+        docs.append({
+            "id": str(row.id),
+            "doc_name": row.doc_name,
+            "doc_type": row.doc_type,
+            "doc_number": row.doc_number,
+            "rank": float(row.rank) if row.rank else 0.0
+        })
     
     return {
-        "id": str(doc.id),
-        "document_id": doc.document_id,
-        "document_name": doc.document_name,
-        "document_type": doc.document_type,
-        "year": doc.year,
-        "status": doc.status,
-        "chunks": [
-            {
-                "id": str(chunk.id),
-                "section_number": chunk.section_number,
-                "section_title": chunk.section_title,
-                "content": chunk.content,
-            }
-            for chunk in doc.chunks
-        ],
+        "query": query_text,
+        "results": docs,
+        "total": len(docs)
     }
 
 
-@router.post("/search")
-def search_norms(
-    query_text: str,
-    document_type: Optional[str] = None,
-    limit: int = 10,
-    db: Session = Depends(get_db_session),
+@router.get("/{norm_id}")
+async def get_norm(
+    norm_id: str,
+    include_sections: bool = True,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Полнотекстовый поиск по нормативным документам"""
-    from sqlalchemy import func
+    """Get detailed information about a regulatory document."""
+    try:
+        norm_uuid = uuid.UUID(norm_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid norm ID format")
     
-    # Полнотекстовый поиск через tsvector
-    results = db.query(
-        NormChunk,
-        func.ts_rank_cd(NormChunk.content_tsv, func.plainto_tsquery('russian', query_text)).label('rank')
-    ).filter(
-        NormChunk.content_tsv.op('@@')(func.plainto_tsquery('russian', query_text))
-    )
+    norm = db.query(NormDocument).filter(NormDocument.id == norm_uuid).first()
     
-    if document_type:
-        results = results.join(NormDocument).filter(NormDocument.document_type == document_type)
+    if not norm:
+        raise HTTPException(status_code=404, detail="Document not found")
     
-    results = results.order_by(func.ts_rank_cd(NormChunk.content_tsv, func.plainto_tsquery('russian', query_text)).desc())
-    results = results.limit(limit).all()
+    response = {
+        "id": str(norm.id),
+        "doc_name": norm.doc_name,
+        "doc_type": norm.doc_type,
+        "doc_number": norm.doc_number,
+        "approval_date": norm.approval_date.isoformat() if norm.approval_date else None,
+        "effective_date": norm.effective_date.isoformat() if norm.effective_date else None,
+        "status": norm.status,
+        "metadata": norm.metadata,
+        "created_at": norm.created_at.isoformat() if norm.created_at else None
+    }
     
-    return [
-        {
-            "id": str(chunk.id),
-            "document_id": chunk.document.document_id,
-            "document_name": chunk.document.document_name,
-            "section_number": chunk.section_number,
-            "section_title": chunk.section_title,
-            "content": chunk.content,
-            "rank": rank,
-        }
-        for chunk, rank in results
-    ]
+    if include_sections:
+        sections = db.query(NormSection).filter(
+            NormSection.document_id == norm_uuid
+        ).order_by(NormSection.level, NormSection.section_number).all()
+        
+        response["sections"] = [
+            {
+                "id": str(s.id),
+                "section_number": s.section_number,
+                "section_title": s.section_title,
+                "content": s.content,
+                "level": s.level
+            }
+            for s in sections
+        ]
+    
+    return response
+
+
+@router.get("/section/{section_id}")
+async def get_norm_section(
+    section_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get a specific section of a regulatory document."""
+    try:
+        section_uuid = uuid.UUID(section_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid section ID format")
+    
+    section = db.query(NormSection).filter(NormSection.id == section_uuid).first()
+    
+    if not section:
+        raise HTTPException(status_code=404, detail="Section not found")
+    
+    return {
+        "id": str(section.id),
+        "document_id": str(section.document_id),
+        "section_number": section.section_number,
+        "section_title": section.section_title,
+        "content": section.content,
+        "level": section.level,
+        "metadata": section.metadata
+    }

@@ -1,155 +1,196 @@
--- Инициализация базы данных AutoNormCheck
--- Создание расширений и таблиц
-
--- Включение PostGIS для работы с геометрией
+-- Enable PostGIS extension
 CREATE EXTENSION IF NOT EXISTS postgis;
-CREATE EXTENSION IF NOT EXISTS pg_trgm;  -- Для нечеткого поиска текста
+CREATE EXTENSION IF NOT EXISTS postgis_topology;
 
--- Создание enum типов (если не созданы через SQLAlchemy)
-DO $$ BEGIN
-    CREATE TYPE issue_priority AS ENUM ('CRITICAL', 'IMPORTANT', 'RECOMMENDATION');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
+-- Create enum types
+CREATE TYPE issue_priority AS ENUM ('CRITICAL', 'IMPORTANT', 'RECOMMENDATION');
+CREATE TYPE issue_status AS ENUM ('PENDING', 'CONFIRMED', 'REJECTED', 'RESOLVED');
+CREATE TYPE file_type AS ENUM ('PDF', 'DWG', 'DXF');
+CREATE TYPE processing_status AS ENUM ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED');
 
-DO $$ BEGIN
-    CREATE TYPE issue_category AS ENUM (
-        'ROAD_SAFETY', 'ACCESSIBILITY', 'LANDSCAPING', 'PARKING',
-        'DRAINAGE', 'LIGHTING', 'SIGNAGE', 'DIMENSIONS',
-        'CONFLICTS', 'MISSING_ELEMENTS'
-    );
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
+-- Users table
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    hashed_password VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255),
+    role VARCHAR(50) DEFAULT 'user',
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-DO $$ BEGIN
-    CREATE TYPE review_status AS ENUM ('PENDING', 'CONFIRMED', 'REJECTED', 'RESOLVED');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
+-- Projects table
+CREATE TABLE IF NOT EXISTS projects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    status VARCHAR(50) DEFAULT 'active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
--- Индексы для ускорения поиска
-CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
-CREATE INDEX IF NOT EXISTS idx_projects_created_at ON projects(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_project_files_project_id ON project_files(project_id);
-CREATE INDEX IF NOT EXISTS idx_project_files_file_type ON project_files(file_type);
-CREATE INDEX IF NOT EXISTS idx_issues_project_id ON issues(project_id);
-CREATE INDEX IF NOT EXISTS idx_issues_priority ON issues(priority);
-CREATE INDEX IF NOT EXISTS idx_issues_category ON issues(category);
-CREATE INDEX IF NOT EXISTS idx_issues_review_status ON issues(review_status);
-CREATE INDEX IF NOT EXISTS idx_issues_confidence ON issues(confidence_score DESC);
+-- Files table
+CREATE TABLE IF NOT EXISTS files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    original_name VARCHAR(255) NOT NULL,
+    stored_name VARCHAR(255) NOT NULL,
+    file_type file_type NOT NULL,
+    file_size BIGINT NOT NULL,
+    mime_type VARCHAR(100),
+    s3_bucket VARCHAR(255),
+    s3_key VARCHAR(500),
+    processing_status processing_status DEFAULT 'PENDING',
+    error_message TEXT,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP WITH TIME ZONE,
+    expires_at TIMESTAMP WITH TIME ZONE
+);
 
--- Пространственный индекс для геометрии
-CREATE INDEX IF NOT EXISTS idx_issues_location_geometry 
-ON issues USING GIST (location_geometry);
+-- Norm documents table (regulatory base)
+CREATE TABLE IF NOT EXISTS norm_documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    doc_name VARCHAR(255) NOT NULL,
+    doc_type VARCHAR(50),
+    doc_number VARCHAR(100),
+    approval_date DATE,
+    effective_date DATE,
+    status VARCHAR(50) DEFAULT 'active',
+    content_hash VARCHAR(64),
+    s3_key VARCHAR(500),
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
--- Индексы для нормативных документов
-CREATE INDEX IF NOT EXISTS idx_norm_documents_document_id ON norm_documents(document_id);
-CREATE INDEX IF NOT EXISTS idx_norm_documents_type ON norm_documents(document_type);
-CREATE INDEX IF NOT EXISTS idx_norm_documents_status ON norm_documents(status);
-CREATE INDEX IF NOT EXISTS idx_norm_chunks_document_id ON norm_chunks(document_id);
+-- Norm sections/chunks for RAG
+CREATE TABLE IF NOT EXISTS norm_sections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    document_id UUID REFERENCES norm_documents(id) ON DELETE CASCADE,
+    section_number VARCHAR(100),
+    section_title VARCHAR(500),
+    content TEXT NOT NULL,
+    parent_section_id UUID REFERENCES norm_sections(id),
+    level INTEGER DEFAULT 1,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
--- Полнотекстовый поиск по содержанию норм
-ALTER TABLE norm_chunks ADD COLUMN IF NOT EXISTS content_tsv tsvector;
+-- Vector embeddings for norm sections (managed by Qdrant, reference here)
+CREATE TABLE IF NOT EXISTS norm_embeddings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    section_id UUID REFERENCES norm_sections(id) ON DELETE CASCADE,
+    qdrant_point_id UUID NOT NULL,
+    model_name VARCHAR(100),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-CREATE OR REPLACE FUNCTION update_content_tsv() RETURNS trigger AS $$
-BEGIN
-    NEW.content_tsv := to_tsvector('russian', COALESCE(NEW.content, '') || ' ' || COALESCE(NEW.section_title, ''));
-    RETURN NEW;
-END
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS update_content_tsv_trigger ON norm_chunks;
-CREATE TRIGGER update_content_tsv_trigger
-    BEFORE INSERT OR UPDATE ON norm_chunks
-    FOR EACH ROW
-    EXECUTE FUNCTION update_content_tsv();
-
--- Заполнение существующих записей
-UPDATE norm_chunks SET content_tsv = to_tsvector('russian', COALESCE(content, '') || ' ' || COALESCE(section_title, ''));
-
--- Индекс для полнотекстового поиска
-CREATE INDEX IF NOT EXISTS idx_norm_chunks_content_tsv ON norm_chunks USING GIN(content_tsv);
-
--- Представление для статистики проектов
-CREATE OR REPLACE VIEW project_statistics AS
-SELECT 
-    p.id as project_id,
-    p.name as project_name,
-    p.status as project_status,
-    COUNT(DISTINCT f.id) as total_files,
-    COUNT(DISTINCT i.id) as total_issues,
-    COUNT(DISTINCT CASE WHEN i.priority = 'CRITICAL' THEN i.id END) as critical_issues,
-    COUNT(DISTINCT CASE WHEN i.priority = 'IMPORTANT' THEN i.id END) as important_issues,
-    COUNT(DISTINCT CASE WHEN i.priority = 'RECOMMENDATION' THEN i.id END) as recommendation_issues,
-    COUNT(DISTINCT CASE WHEN i.review_status = 'CONFIRMED' THEN i.id END) as confirmed_issues,
-    COUNT(DISTINCT CASE WHEN i.review_status = 'REJECTED' THEN i.id END) as rejected_issues,
-    AVG(i.confidence_score) as avg_confidence_score,
-    p.processing_completed_at,
-    p.created_at
-FROM projects p
-LEFT JOIN project_files f ON p.id = f.project_id
-LEFT JOIN issues i ON p.id = i.project_id
-GROUP BY p.id, p.name, p.status, p.processing_completed_at, p.created_at;
-
--- Функция для очистки старых проектов (вызывается по расписанию)
-CREATE OR REPLACE FUNCTION cleanup_old_projects(days_to_keep INTEGER DEFAULT 7)
-RETURNS INTEGER AS $$
-DECLARE
-    deleted_count INTEGER;
-    cutoff_date TIMESTAMP;
-BEGIN
-    cutoff_date := NOW() - INTERVAL '1 day' * days_to_keep;
+-- Issues (findings) table
+CREATE TABLE IF NOT EXISTS issues (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    file_id UUID REFERENCES files(id) ON DELETE SET NULL,
+    priority issue_priority NOT NULL,
+    status issue_status DEFAULT 'PENDING',
+    category VARCHAR(100) NOT NULL,
+    title VARCHAR(500) NOT NULL,
+    description TEXT NOT NULL,
+    suggestion TEXT,
+    confidence_score REAL DEFAULT 0.0,
     
-    -- Подсчет удаляемых проектов
-    SELECT COUNT(*) INTO deleted_count
-    FROM projects
-    WHERE created_at < cutoff_date;
+    -- Reference to regulation
+    regulation_doc_id UUID REFERENCES norm_documents(id),
+    regulation_section VARCHAR(100),
+    regulation_text TEXT,
     
-    -- Удаление каскадно (благодаря foreign keys)
-    DELETE FROM projects
-    WHERE created_at < cutoff_date;
+    -- Location data (GeoJSON)
+    location_geojson JSONB,
+    bbox JSONB,
+    coordinate_system VARCHAR(50) DEFAULT 'WCS',
     
-    RETURN deleted_count;
-END;
-$$ LANGUAGE plpgsql;
+    -- Review data
+    reviewed_by UUID REFERENCES users(id),
+    review_comment TEXT,
+    reviewed_at TIMESTAMP WITH TIME ZONE,
+    
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
--- Триггер для автоматического обновления updated_at
+-- Processing tasks queue
+CREATE TABLE IF NOT EXISTS processing_tasks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    file_id UUID REFERENCES files(id) ON DELETE CASCADE,
+    task_type VARCHAR(100) NOT NULL,
+    celery_task_id VARCHAR(255),
+    status processing_status DEFAULT 'PENDING',
+    progress INTEGER DEFAULT 0,
+    error_message TEXT,
+    result JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Audit log
+CREATE TABLE IF NOT EXISTS audit_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    action VARCHAR(100) NOT NULL,
+    resource_type VARCHAR(50),
+    resource_id UUID,
+    details JSONB DEFAULT '{}',
+    ip_address INET,
+    user_agent TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes
+CREATE INDEX idx_projects_user_id ON projects(user_id);
+CREATE INDEX idx_files_project_id ON files(project_id);
+CREATE INDEX idx_files_processing_status ON files(processing_status);
+CREATE INDEX idx_issues_project_id ON issues(project_id);
+CREATE INDEX idx_issues_priority ON issues(priority);
+CREATE INDEX idx_issues_status ON issues(status);
+CREATE INDEX idx_issues_category ON issues(category);
+CREATE INDEX idx_norm_sections_document_id ON norm_sections(document_id);
+CREATE INDEX idx_audit_log_user_id ON audit_log(user_id);
+CREATE INDEX idx_audit_log_created_at ON audit_log(created_at);
+
+-- GIN indexes for JSONB
+CREATE INDEX idx_files_metadata ON files USING GIN(metadata);
+CREATE INDEX idx_issues_location ON issues USING GIN(location_geojson);
+CREATE INDEX idx_norm_sections_content ON norm_sections USING GIN(to_tsvector('russian', content));
+
+-- Spatial index for geometry queries (if using PostGIS geometry type)
+-- CREATE INDEX idx_issues_location_geom ON issues USING GIST(ST_GeomFromGeoJSON(location_geojson));
+
+-- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = NOW();
+    NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ language 'plpgsql';
 
--- Применение триггера к таблицам
-DROP TRIGGER IF EXISTS update_projects_updated_at ON projects;
-CREATE TRIGGER update_projects_updated_at
-    BEFORE UPDATE ON projects
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+-- Add triggers for updated_at
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS update_issues_updated_at ON issues;
-CREATE TRIGGER update_issues_updated_at
-    BEFORE UPDATE ON issues
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON projects
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Начальные данные для тестирования (опционально)
--- INSERT INTO norm_documents (document_id, document_name, document_type, year, status)
--- VALUES 
---     ('gost_r_52289_2014', 'ГОСТ Р 52289-2014 Технические средства организации дорожного движения', 'ГОСТ', 2014, 'active'),
---     ('gost_33150_2019', 'ГОСТ 33150-2019 Дороги автомобильные общего пользования', 'ГОСТ', 2019, 'active'),
---     ('sp_34_13330_2021', 'СП 34.13330.2021 Автомобильные дороги', 'СП', 2021, 'active');
+CREATE TRIGGER update_norm_documents_updated_at BEFORE UPDATE ON norm_documents
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON TABLE projects IS 'Проекты с загруженной документацией';
-COMMENT ON TABLE project_files IS 'Загруженные файлы проектов (PDF, DWG, DXF)';
-COMMENT ON TABLE issues IS 'Замечания к проектной документации';
-COMMENT ON TABLE norm_documents IS 'Нормативные документы (ГОСТ, СП, СНиП, ПДД)';
-COMMENT ON TABLE norm_chunks IS 'Чанки нормативных документов для RAG поиска';
-COMMENT ON TABLE users IS 'Пользователи системы';
+CREATE TRIGGER update_issues_updated_at BEFORE UPDATE ON issues
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON COLUMN issues.location_geometry IS 'Геометрия замечания в системе координат чертежа (WCS)';
-COMMENT ON COLUMN issues.bounding_box IS 'Ограничивающий прямоугольник [min_x, min_y, max_x, max_y]';
-COMMENT ON COLUMN issues.ai_trace IS 'Трассировка принятия решений ИИ для аудита';
+-- Insert default admin user (password: admin123, change in production!)
+INSERT INTO users (email, hashed_password, full_name, role) VALUES
+('admin@autonormcheck.ru', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzS3MebAJu', 'Administrator', 'admin')
+ON CONFLICT (email) DO NOTHING;
