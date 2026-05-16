@@ -1,0 +1,71 @@
+# Core API
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.25
+alembic==1.13.1
+psycopg2-binary==2.9.9
+geoalchemy2==0.14.3
+
+# Validation
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Celery & Redis
+celery==5.3.6
+redis==5.0.1
+
+# S3 / MinIO
+boto3==1.34.34
+
+# Vector DB
+qdrant-client==1.7.0
+
+# CAD Processing
+ezdxf==1.1.4
+# ODA File Converter - устанавливается отдельно
+
+# PDF Processing
+pymupdf==1.23.8
+pymupdf4llm==0.0.5
+
+# OCR & Computer Vision
+opencv-python-headless==4.9.0.80
+paddlepaddle==2.6.0
+paddleocr==2.7.3
+
+# Geometry
+shapely==2.0.2
+
+# NLP & LLM
+langchain==0.1.4
+langchain-community==0.0.20
+sentence-transformers==2.3.1
+transformers==4.37.2
+torch==2.1.2
+
+# RAG & Embeddings
+chromadb==0.4.22  # Альтернатива Qdrant для локальной разработки
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+cryptography==42.0.0
+
+# Logging
+python-json-logger==2.0.7
+
+# Utilities
+httpx==0.26.0
+aiofiles==23.2.1
+tenacity==8.2.3  # Retry logic
+Pillow==10.2.0
+
+# Development
+pytest==7.4.4
+pytest-asyncio==0.23.3
+pytest-cov==4.1.0
+black==24.1.0
+ruff==0.1.14
