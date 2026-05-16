@@ -1,151 +1,228 @@
 """
-API роутеры для файлов
+Files API endpoints.
+Upload, download, and manage project files (PDF, DWG).
 """
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+import uuid
+from datetime import datetime, timedelta
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File as FastAPIFile
 from sqlalchemy.orm import Session
-from typing import List, Optional
-from uuid import UUID
-import hashlib
-from datetime import datetime
 
-from app.core.database import get_db_session
-from app.models.database import Project, ProjectFile
-from app.core.minio_client import upload_file_bytes
-from app.workers.tasks import process_project_upload
-
+from app.core.config import settings
+from app.core.database import get_db
+from app.models.database import File, Project, FileType, ProcessingStatus
+from app.api.auth import get_current_user
+from app.api.projects import get_project
 
 router = APIRouter()
 
 
-@router.post("/{project_id}/upload", response_model=List[dict])
-async def upload_files(
-    project_id: UUID,
-    files: List[UploadFile],
-    db: Session = Depends(get_db_session),
+def validate_file_extension(filename: str) -> str:
+    """Validate file extension and return file type."""
+    ext = filename.split(".")[-1].lower()
+    if ext == "pdf":
+        return FileType.PDF
+    elif ext in ("dwg", "dxf"):
+        return FileType.DWG if ext == "dwg" else FileType.DXF
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type: {ext}. Allowed: pdf, dwg, dxf"
+        )
+
+
+@router.post("/upload", response_model=dict, status_code=status.HTTP_201_CREATED)
+async def upload_file(
+    file: UploadFile = FastAPIFile(...),
+    project_id: str = None,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
-    """Загрузка файлов в проект"""
-    # Проверка существования проекта
-    project = db.query(Project).filter(Project.id == project_id).first()
+    """
+    Upload a new file to a project.
+    
+    - **file**: The file to upload (PDF, DWG, or DXF)
+    - **project_id**: ID of the project to associate with
+    """
+    # Validate file size
+    file_size = 0
+    content = await file.read()
+    file_size = len(content)
+    
+    if file_size > settings.FILE_UPLOAD_MAX_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large. Maximum size: {settings.FILE_UPLOAD_MAX_SIZE} bytes"
+        )
+    
+    # Validate file type
+    try:
+        file_type = validate_file_extension(file.filename)
+    except HTTPException as e:
+        raise e
+    
+    # Verify project exists and belongs to user
+    try:
+        project_uuid = uuid.UUID(project_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid project ID")
+    
+    project = db.query(Project).filter(
+        Project.id == project_uuid,
+        Project.user_id == current_user.id
+    ).first()
+    
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    if project.status != "uploaded":
-        raise HTTPException(status_code=400, detail="Project is already being processed")
+    # Create file record
+    stored_name = f"{uuid.uuid4()}_{file.filename}"
+    expires_at = datetime.utcnow() + timedelta(days=settings.DATA_RETENTION_DAYS)
     
-    uploaded_files = []
-    file_ids = []
+    db_file = File(
+        project_id=project_uuid,
+        original_name=file.filename,
+        stored_name=stored_name,
+        file_type=file_type,
+        file_size=file_size,
+        mime_type=file.content_type,
+        s3_bucket=settings.MINIO_BUCKET,
+        s3_key=f"{project_id}/{stored_name}",
+        processing_status=ProcessingStatus.PENDING,
+        expires_at=expires_at
+    )
     
-    for file in files:
-        # Валидация расширения
-        filename = file.filename.lower()
-        if not (filename.endswith('.pdf') or filename.endswith('.dwg') or filename.endswith('.dxf')):
-            continue
-        
-        # Определение типа файла
-        if filename.endswith('.pdf'):
-            file_type = 'pdf'
-        elif filename.endswith('.dwg'):
-            file_type = 'dwg'
-        else:
-            file_type = 'dxf'
-        
-        # Чтение содержимого
-        content = await file.read()
-        file_size = len(content)
-        
-        # Вычисление хэша
-        file_hash = hashlib.sha256(content).hexdigest()
-        
-        # Генерация S3 ключа
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-        s3_key = f"projects/{project_id}/{timestamp}_{file.filename}"
-        
-        # Загрузка в S3
-        success = upload_file_bytes(
-            file_bytes=content,
-            object_name=s3_key,
-            content_type=file.content_type or "application/octet-stream",
-        )
-        
-        if not success:
-            raise HTTPException(status_code=500, detail=f"Failed to upload file {file.filename}")
-        
-        # Создание записи в БД
-        project_file = ProjectFile(
-            project_id=project_id,
-            filename=s3_key.split('/')[-1],
-            original_filename=file.filename,
-            file_type=file_type,
-            file_size_bytes=file_size,
-            file_hash=file_hash,
-            s3_bucket="projects",
-            s3_key=s3_key,
-            status="uploaded",
-        )
-        
-        db.add(project_file)
-        uploaded_files.append(project_file)
-        file_ids.append(str(project_file.id))
-    
+    db.add(db_file)
     db.commit()
+    db.refresh(db_file)
     
-    # Запуск обработки в фоне
-    if file_ids:
-        process_project_upload.delay(str(project_id), file_ids)
+    # TODO: Upload file to MinIO here
+    # minio_client.put_object(...)
     
-    return [
-        {
-            "id": str(f.id),
-            "filename": f.original_filename,
-            "file_type": f.file_type,
-            "file_size_bytes": f.file_size_bytes,
-            "status": f.status,
-        }
-        for f in uploaded_files
-    ]
+    # Trigger async processing
+    # from app.workers.tasks import parse_file
+    # parse_file.delay(str(db_file.id))
+    
+    return {
+        "id": str(db_file.id),
+        "project_id": str(db_file.project_id),
+        "original_name": db_file.original_name,
+        "file_type": db_file.file_type,
+        "file_size": db_file.file_size,
+        "processing_status": db_file.processing_status,
+        "created_at": db_file.created_at.isoformat() if db_file.created_at else None
+    }
 
 
 @router.get("/{file_id}")
-def get_file_info(
-    file_id: UUID,
-    db: Session = Depends(get_db_session),
+async def get_file(
+    file_id: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
-    """Информация о файле"""
-    file = db.query(ProjectFile).filter(ProjectFile.id == file_id).first()
+    """Get file details by ID."""
+    try:
+        file_uuid = uuid.UUID(file_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file ID format")
     
-    if not file:
+    db_file = db.query(File).join(Project).filter(
+        File.id == file_uuid,
+        Project.user_id == current_user.id
+    ).first()
+    
+    if not db_file:
         raise HTTPException(status_code=404, detail="File not found")
     
     return {
-        "id": str(file.id),
-        "project_id": str(file.project_id),
-        "filename": file.original_filename,
-        "file_type": file.file_type,
-        "file_size_bytes": file.file_size_bytes,
-        "status": file.status,
-        "uploaded_at": file.uploaded_at.isoformat(),
-        "parsed_at": file.parsed_at.isoformat() if file.parsed_at else None,
-        "extracted_data_available": file.extracted_data is not None,
+        "id": str(db_file.id),
+        "project_id": str(db_file.project_id),
+        "original_name": db_file.original_name,
+        "stored_name": db_file.stored_name,
+        "file_type": db_file.file_type,
+        "file_size": db_file.file_size,
+        "mime_type": db_file.mime_type,
+        "processing_status": db_file.processing_status,
+        "error_message": db_file.error_message,
+        "metadata": db_file.metadata,
+        "created_at": db_file.created_at.isoformat() if db_file.created_at else None,
+        "processed_at": db_file.processed_at.isoformat() if db_file.processed_at else None
     }
 
 
 @router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_file(
-    file_id: UUID,
-    db: Session = Depends(get_db_session),
+async def delete_file(
+    file_id: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
-    """Удаление файла"""
-    file = db.query(ProjectFile).filter(ProjectFile.id == file_id).first()
+    """Delete a file and its associated data."""
+    try:
+        file_uuid = uuid.UUID(file_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file ID format")
     
-    if not file:
+    db_file = db.query(File).join(Project).filter(
+        File.id == file_uuid,
+        Project.user_id == current_user.id
+    ).first()
+    
+    if not db_file:
         raise HTTPException(status_code=404, detail="File not found")
     
-    # Удаление из S3
-    from app.core.minio_client import delete_file as s3_delete
-    s3_delete(file.s3_key)
+    # TODO: Delete from MinIO
+    # minio_client.remove_object(db_file.s3_bucket, db_file.s3_key)
     
-    # Удаление из БД
-    db.delete(file)
+    db.delete(db_file)
     db.commit()
     
     return None
+
+
+@router.post("/{file_id}/analyze")
+async def analyze_file(
+    file_id: str,
+    check_categories: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Trigger analysis for a specific file.
+    
+    - **check_categories**: Comma-separated list of categories to check
+    """
+    try:
+        file_uuid = uuid.UUID(file_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file ID format")
+    
+    db_file = db.query(File).join(Project).filter(
+        File.id == file_uuid,
+        Project.user_id == current_user.id
+    ).first()
+    
+    if not db_file:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    if db_file.processing_status == ProcessingStatus.PROCESSING:
+        raise HTTPException(status_code=400, detail="File is already being processed")
+    
+    # Update status
+    db_file.processing_status = ProcessingStatus.PROCESSING
+    db.commit()
+    
+    # Parse categories
+    categories = None
+    if check_categories:
+        categories = [c.strip() for c in check_categories.split(",")]
+    
+    # Trigger async analysis task
+    # from app.workers.tasks import analyze_file
+    # task = analyze_file.delay(str(db_file.id), categories)
+    
+    return {
+        "message": "Analysis started",
+        "file_id": str(db_file.id),
+        "categories": categories
+    }

@@ -1,26 +1,104 @@
 """
-API роутеры для замечаний
+Issues API endpoints.
+Manage and review analysis findings.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+import uuid
+from typing import Optional, List
+
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import Optional
-from uuid import UUID
-from datetime import datetime
 
-from app.core.database import get_db_session
-from app.models.database import Issue, ReviewStatus
-
+from app.core.database import get_db
+from app.models.database import Issue, Project, User, IssuePriority, IssueStatus
+from app.api.auth import get_current_user
 
 router = APIRouter()
 
 
-@router.get("/{issue_id}")
-def get_issue(
-    issue_id: UUID,
-    db: Session = Depends(get_db_session),
+@router.get("/")
+async def list_issues(
+    project_id: Optional[str] = None,
+    priority: Optional[str] = None,
+    status_filter: Optional[str] = None,
+    category: Optional[str] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Получение информации о замечании"""
-    issue = db.query(Issue).filter(Issue.id == issue_id).first()
+    """List issues with optional filters."""
+    query = db.query(Issue).join(Project).filter(
+        Project.user_id == current_user.id
+    )
+    
+    if project_id:
+        try:
+            project_uuid = uuid.UUID(project_id)
+            query = query.filter(Issue.project_id == project_uuid)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid project ID")
+    
+    if priority:
+        query = query.filter(Issue.priority == priority)
+    
+    if status_filter:
+        query = query.filter(Issue.status == status_filter)
+    
+    if category:
+        query = query.filter(Issue.category == category)
+    
+    total = query.count()
+    issues = query.offset(skip).limit(limit).all()
+    
+    result = []
+    for issue in issues:
+        result.append({
+            "id": str(issue.id),
+            "project_id": str(issue.project_id),
+            "file_id": str(issue.file_id) if issue.file_id else None,
+            "priority": issue.priority,
+            "status": issue.status,
+            "category": issue.category,
+            "title": issue.title,
+            "description": issue.description,
+            "suggestion": issue.suggestion,
+            "confidence_score": issue.confidence_score,
+            "regulation_reference": {
+                "doc_name": issue.regulation_doc_id,
+                "section": issue.regulation_section,
+                "text": issue.regulation_text
+            } if issue.regulation_doc_id else None,
+            "location": issue.location_geojson,
+            "bbox": issue.bbox,
+            "review_comment": issue.review_comment,
+            "created_at": issue.created_at.isoformat() if issue.created_at else None,
+            "reviewed_at": issue.reviewed_at.isoformat() if issue.reviewed_at else None
+        })
+    
+    return {
+        "items": result,
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
+
+
+@router.get("/{issue_id}")
+async def get_issue(
+    issue_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get detailed information about a specific issue."""
+    try:
+        issue_uuid = uuid.UUID(issue_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid issue ID format")
+    
+    issue = db.query(Issue).join(Project).filter(
+        Issue.id == issue_uuid,
+        Project.user_id == current_user.id
+    ).first()
     
     if not issue:
         raise HTTPException(status_code=404, detail="Issue not found")
@@ -28,95 +106,121 @@ def get_issue(
     return {
         "id": str(issue.id),
         "project_id": str(issue.project_id),
+        "file_id": str(issue.file_id) if issue.file_id else None,
+        "priority": issue.priority,
+        "status": issue.status,
+        "category": issue.category,
         "title": issue.title,
         "description": issue.description,
         "suggestion": issue.suggestion,
-        "priority": issue.priority.value,
-        "category": issue.category.value,
         "confidence_score": issue.confidence_score,
-        "regulation_reference": issue.regulation_reference,
-        "location_geometry": issue.location_geometry,
-        "bounding_box": issue.bounding_box,
-        "affected_entities": issue.affected_entities,
-        "review_status": issue.review_status.value,
-        "reviewer_comment": issue.reviewer_comment,
-        "reviewed_at": issue.reviewed_at.isoformat() if issue.reviewed_at else None,
-        "created_at": issue.created_at.isoformat(),
+        "regulation_reference": {
+            "doc_id": str(issue.regulation_doc_id) if issue.regulation_doc_id else None,
+            "section": issue.regulation_section,
+            "text": issue.regulation_text
+        },
+        "location": issue.location_geojson,
+        "bbox": issue.bbox,
+        "coordinate_system": issue.coordinate_system,
+        "review_comment": issue.review_comment,
+        "reviewed_by": str(issue.reviewed_by) if issue.reviewed_by else None,
+        "created_at": issue.created_at.isoformat() if issue.created_at else None,
+        "updated_at": issue.updated_at.isoformat() if issue.updated_at else None,
+        "reviewed_at": issue.reviewed_at.isoformat() if issue.reviewed_at else None
     }
 
 
 @router.patch("/{issue_id}/review")
-def review_issue(
-    issue_id: UUID,
-    review_status: ReviewStatus,
+async def review_issue(
+    issue_id: str,
+    status_update: str,
     comment: Optional[str] = None,
-    db: Session = Depends(get_db_session),
-    user_id: Optional[UUID] = None,  # В production из токена
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Проверка замечания экспертом (подтверждение/отклонение)"""
-    issue = db.query(Issue).filter(Issue.id == issue_id).first()
+    """
+    Review an issue (confirm or reject).
+    
+    - **status_update**: New status (CONFIRMED, REJECTED, RESOLVED)
+    - **comment**: Optional review comment
+    """
+    try:
+        issue_uuid = uuid.UUID(issue_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid issue ID format")
+    
+    if status_update not in ["CONFIRMED", "REJECTED", "RESOLVED"]:
+        raise HTTPException(
+            status_code=400, 
+            detail="Invalid status. Must be CONFIRMED, REJECTED, or RESOLVED"
+        )
+    
+    issue = db.query(Issue).join(Project).filter(
+        Issue.id == issue_uuid,
+        Project.user_id == current_user.id
+    ).first()
     
     if not issue:
         raise HTTPException(status_code=404, detail="Issue not found")
     
-    # Обновление статуса проверки
-    issue.review_status = review_status
-    issue.reviewer_comment = comment
+    from datetime import datetime
+    issue.status = status_update
+    issue.reviewed_by = current_user.id
+    issue.review_comment = comment
     issue.reviewed_at = datetime.utcnow()
-    issue.reviewed_by = user_id
     
     db.commit()
     db.refresh(issue)
     
     return {
         "id": str(issue.id),
-        "review_status": issue.review_status.value,
-        "reviewer_comment": issue.reviewer_comment,
-        "reviewed_at": issue.reviewed_at.isoformat(),
+        "status": issue.status,
+        "review_comment": issue.review_comment,
+        "reviewed_by": str(issue.reviewed_by),
+        "reviewed_at": issue.reviewed_at.isoformat() if issue.reviewed_at else None
     }
 
 
-@router.get("/statistics/summary")
-def get_issues_summary(
-    project_id: Optional[UUID] = None,
-    db: Session = Depends(get_db_session),
+@router.get("/export")
+async def export_issues(
+    project_id: str,
+    format: str = Query("json", regex="^(json|csv|pdf)$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Сводная статистика по замечаниям"""
-    from sqlalchemy import func
+    """Export issues to JSON, CSV, or PDF format."""
+    try:
+        project_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
     
-    query = db.query(
-        Issue.priority,
-        Issue.review_status,
-        func.count(Issue.id).label('count'),
-        func.avg(Issue.confidence_score).label('avg_confidence'),
-    )
+    issues = db.query(Issue).join(Project).filter(
+        Issue.project_id == project_uuid,
+        Project.user_id == current_user.id
+    ).all()
     
-    if project_id:
-        query = query.filter(Issue.project_id == project_id)
+    if format == "json":
+        return {
+            "project_id": project_id,
+            "total_issues": len(issues),
+            "summary": {
+                "critical": sum(1 for i in issues if i.priority == "CRITICAL"),
+                "important": sum(1 for i in issues if i.priority == "IMPORTANT"),
+                "recommendations": sum(1 for i in issues if i.priority == "RECOMMENDATION")
+            },
+            "issues": [
+                {
+                    "id": str(i.id),
+                    "priority": i.priority,
+                    "category": i.category,
+                    "title": i.title,
+                    "description": i.description,
+                    "suggestion": i.suggestion,
+                    "regulation": i.regulation_text
+                }
+                for i in issues
+            ]
+        }
     
-    results = query.group_by(Issue.priority, Issue.review_status).all()
-    
-    summary = {
-        "total": sum(r.count for r in results),
-        "by_priority": {},
-        "by_review_status": {},
-    }
-    
-    for result in results:
-        priority = result.priority.value
-        status = result.review_status.value
-        
-        if priority not in summary["by_priority"]:
-            summary["by_priority"][priority] = {"count": 0, "confirmed": 0}
-        
-        summary["by_priority"][priority]["count"] += result.count
-        summary["by_priority"][priority]["avg_confidence"] = float(result.avg_confidence) if result.avg_confidence else 0
-        
-        if status == "CONFIRMED":
-            summary["by_priority"][priority]["confirmed"] += result.count
-        
-        if status not in summary["by_review_status"]:
-            summary["by_review_status"][status] = 0
-        summary["by_review_status"][status] += result.count
-    
-    return summary
+    # TODO: Implement CSV and PDF export
+    raise HTTPException(status_code=501, detail=f"{format.upper()} export not yet implemented")
