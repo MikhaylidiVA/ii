@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebGIS — PostgreSQL в браузере</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+<style>
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/inter@5.0.0/index.min.css');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',-apple-system,sans-serif;background:#f2f3f7;color:#333;overflow:hidden;height:100vh}
+:root{--blue:#2b7de9;--blue-h:#1a6ad4;--blue-light:#e8f1fc;--dark:#1d2530;--dark-h:#2a3444;--gray:#f2f3f7;--border:#d8dbe2;--gray-t:#6b7280;--white:#fff;--red:#e53935;--green:#2e7d32;--orange:#f59e0b;--shadow:0 1px 3px rgba(0,0,0,.08);--shadow-lg:0 4px 12px rgba(0,0,0,.1);--shadow-xl:0 10px 30px rgba(0,0,0,.12);--r:8px;--rl:12px}
+
+/* === AUTH STYLES === */
+.auth-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:linear-gradient(135deg,var(--dark) 0%,#2a3444 100%);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-overlay.hidden{display:none}
+.auth-card{background:var(--white);border-radius:var(--rl);width:100%;max-width:420px;box-shadow:var(--shadow-xl);overflow:hidden;animation:slideUp .3s ease}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.auth-header{background:var(--dark);padding:24px 28px;text-align:center;border-bottom:3px solid var(--blue)}
+.auth-header .logo{font-weight:700;font-size:20px;color:#fff;display:flex;align-items:center;justify-content:center;gap:10px}
+.auth-header .logo i{color:var(--blue);font-size:24px}
+.auth-header .logo small{font-weight:400;color:rgba(255,255,255,.5);font-size:12px;margin-left:4px}
+.auth-body{padding:28px}
+.auth-title{font-size:16px;font-weight:600;color:#333;margin-bottom:20px;text-align:center}
+.auth-form{display:flex;flex-direction:column;gap:14px}
+.auth-input-group{position:relative}
+.auth-input{width:100%;background:var(--gray);border:1px solid var(--border);color:#333;padding:12px 40px 12px 14px;border-radius:var(--r);font-size:13px;outline:none;font-family:inherit;transition:all .2s}
+.auth-input:focus{border-color:var(--blue);background-color:#fff;box-shadow:0 0 0 3px rgba(43,125,233,.1)}
+.auth-input::placeholder{color:var(--gray-t)}
+.auth-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:0 0;border:none;color:var(--gray-t);cursor:pointer;padding:4px;border-radius:4px;font-size:12px;transition:all .15s}
+.auth-toggle:hover{color:var(--blue)}
+.auth-options{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--gray-t)}
+.auth-remember{display:flex;align-items:center;gap:6px;cursor:pointer}
+.auth-remember input{accent-color:var(--blue);cursor:pointer;width:14px;height:14px}
+.auth-forgot{color:var(--blue);text-decoration:none;cursor:pointer;transition:color .15s}
+.auth-forgot:hover{color:var(--blue-h)}
+.auth-btn{background:var(--blue);color:#fff;border:none;padding:12px;border-radius:var(--r);cursor:pointer;font-size:14px;font-weight:500;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;font-family:inherit;margin-top:4px}
+.auth-btn:hover{background:var(--blue-h);box-shadow:var(--shadow)}
+.auth-btn:disabled{background:var(--gray-t);cursor:not-allowed}
+.auth-error{background:rgba(229,57,53,.08);border:1px solid rgba(229,57,53,.2);color:var(--red);padding:10px 14px;border-radius:var(--r);font-size:12px;display:none;align-items:center;gap:8px}
+.auth-error.show{display:flex}
+.auth-footer{text-align:center;padding:16px 28px;border-top:1px solid var(--border);font-size:11px;color:var(--gray-t)}
+.auth-demo{background:var(--blue-light);border-radius:var(--r);padding:12px;margin-top:16px;font-size:11px;color:var(--gray-t)}
+.auth-demo code{background:var(--gray);padding:2px 6px;border-radius:3px;color:var(--blue);font-family:monospace}
+
+/* === MAIN APP STYLES (unchanged) === */
+.app{display:flex;flex-direction:column;height:100vh;opacity:0;transition:opacity .3s}
+.app.ready{opacity:1}
+.header{display:flex;align-items:center;height:56px;padding:0 20px;background:var(--dark);z-index:100;gap:16px;border-bottom:3px solid var(--blue)}
+.header .logo{font-weight:700;font-size:17px;color:#fff;display:flex;align-items:center;gap:8px}
+.logo i{color:var(--blue);font-size:20px}
+.logo small{font-weight:400;color:rgba(255,255,255,.45);font-size:11px;margin-left:6px}
+.hnav{display:flex;gap:2px;align-items:center;margin-left:24px;flex-wrap:nowrap;overflow-x:auto}
+.nbtn{background:0 0;border:none;color:rgba(255,255,255,.7);padding:7px 10px;cursor:pointer;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:5px;transition:all .15s;font-family:inherit;white-space:nowrap}
+.nbtn:hover{background:var(--dark-h);color:#fff}
+.nbtn.on{background:var(--blue);color:#fff}
+.sep{width:1px;height:28px;background:rgba(255,255,255,.12);margin:0 4px;flex-shrink:0}
+.hspacer{flex:1}
+.coords{display:flex;gap:16px;font-size:11px;color:rgba(255,255,255,.5);font-family:monospace}
+.coords b{color:rgba(255,255,255,.85);font-weight:500}
+.main{display:flex;flex:1;overflow:hidden}
+.sleft{width:280px;background:var(--white);border-right:1px solid var(--border);display:flex;flex-direction:column;transition:width .3s;overflow:hidden;box-shadow:var(--shadow);flex-shrink:0}
+.sleft.collapsed{width:0;border:none;box-shadow:none}
+.ssearch{padding:12px 14px;border-bottom:1px solid var(--border)}
+.sinput{width:100%;background:var(--gray);border:1px solid var(--border);color:#333;padding:8px 10px 8px 32px;border-radius:var(--r);font-size:12px;outline:none;font-family:inherit;transition:all .2s}
+.sinput:focus{border-color:var(--blue);background-color:#fff;box-shadow:0 0 0 3px rgba(43,125,233,.1)}
+.sinput::placeholder{color:var(--gray-t)}
+.shdr{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border)}
+.shdr h3{font-size:11px;text-transform:uppercase;color:var(--gray-t);letter-spacing:.5px;font-weight:600}
+.ibtn{background:0 0;border:none;color:var(--gray-t);cursor:pointer;padding:4px;border-radius:4px;font-size:12px;transition:all .15s}
+.ibtn:hover{background:var(--gray);color:var(--blue)}
+.llist{flex:1;overflow-y:auto;padding:4px 0}
+.litem{display:flex;align-items:center;padding:8px 14px;gap:8px;cursor:pointer;transition:background .12s;border-left:3px solid transparent}
+.litem:hover{background:var(--blue-light)}
+.litem.active{background:var(--blue-light);border-left-color:var(--blue)}
+.litem input[type=checkbox]{accent-color:var(--blue);cursor:pointer;width:14px;height:14px}
+.lcolor{width:16px;height:4px;border-radius:2px;flex-shrink:0}
+.lname{flex:1;font-size:12px;color:#333;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lcount{font-size:10px;color:var(--gray-t);background:var(--gray);padding:1px 5px;border-radius:8px}
+.lsrc{font-size:9px;padding:1px 4px;border-radius:3px;font-weight:600}
+.lsrc.pg{background:rgba(43,125,233,.1);color:var(--blue)}
+.lsrc.local{background:rgba(107,114,128,.1);color:var(--gray-t)}
+.lbtns{display:none;gap:3px}
+.litem:hover .lbtns{display:flex}
+.lbtn{background:0 0;border:none;color:var(--gray-t);cursor:pointer;padding:3px 4px;border-radius:3px;font-size:10px;transition:all .15s}
+.lbtn:hover{color:var(--red);background:rgba(229,57,53,.08)}
+.sright{width:400px;background:var(--white);border-left:1px solid var(--border);display:flex;flex-direction:column;transition:width .3s;overflow:hidden;box-shadow:var(--shadow);flex-shrink:0}
+.sright.collapsed{width:0;border:none;box-shadow:none}
+.tabs{display:flex;border-bottom:1px solid var(--border)}
+.tbtn{flex:1;padding:10px 0;text-align:center;font-size:11px;cursor:pointer;border:none;background:0 0;color:var(--gray-t);border-bottom:2px solid transparent;transition:all .15s;font-family:inherit;font-weight:500}
+.tbtn.on{color:var(--blue);border-bottom-color:var(--blue);background:var(--blue-light)}
+.tbtn:hover:not(.on){color:#333}
+.tcontent{flex:1;overflow-y:auto;display:none}
+.tcontent.on{display:block}
+.ppanel{padding:14px}
+.pempty{text-align:center;padding:40px 20px;color:var(--gray-t)}
+.pempty i{font-size:36px;display:block;margin-bottom:12px;color:var(--border)}
+.pgrp{margin-bottom:16px}
+.pgrpt{font-size:10px;text-transform:uppercase;color:var(--gray-t);letter-spacing:.5px;padding-bottom:6px;border-bottom:1px solid var(--border);margin-bottom:8px;font-weight:600}
+.prow{display:flex;justify-content:space-between;padding:5px 0;font-size:12px;align-items:center}
+.plbl{color:var(--gray-t)}
+.pval{color:#333;font-weight:500;font-family:monospace;font-size:11px}
+.pacts{display:flex;gap:6px;margin-top:14px;flex-wrap:wrap}
+.btn{padding:7px 14px;border:none;border-radius:var(--r);cursor:pointer;font-size:12px;transition:all .15s;display:inline-flex;align-items:center;gap:5px;font-family:inherit;font-weight:500}
+.btn-p{background:var(--blue);color:#fff}
+.btn-p:hover{background:var(--blue-h);box-shadow:var(--shadow)}
+.btn-s{background:var(--gray);color:#333;border:1px solid var(--border)}
+.btn-s:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
+.btn-d{background:var(--red);color:#fff}
+.btn-d:hover{background:#c62828}
+.btn-sm{padding:5px 8px;font-size:11px}
+.btn-success{background:var(--green);color:#fff}
+.btn-success:hover{background:#1b5e20}
+.atoolbar{display:flex;gap:6px;padding:10px 14px;align-items:center;border-bottom:1px solid var(--border)}
+.atoolbar select{flex:1;background:var(--gray);border:1px solid var(--border);color:#333;padding:6px 8px;border-radius:var(--r);font-size:11px;font-family:inherit;outline:none}
+.atoolbar select:focus{border-color:var(--blue)}
+.atbl{width:100%;border-collapse:collapse;font-size:11px}
+.atbl th{background:var(--gray);color:var(--gray-t);padding:8px 10px;text-align:left;position:sticky;top:0;font-size:10px;text-transform:uppercase;font-weight:600;border-bottom:1px solid var(--border)}
+.atbl td{padding:6px 10px;border-bottom:1px solid #f0f0f5;color:#555}
+.atbl tr:hover td{background:var(--blue-light);color:#333}
+.atbl tr.sel td{background:var(--blue-light);color:var(--blue);font-weight:500}
+.qpanel{padding:14px}
+.qpanel h4{font-size:13px;color:#333;margin-bottom:10px;font-weight:600}
+.qrow{display:flex;gap:6px;margin-bottom:8px;align-items:center}
+.qrow select,.qrow input{background:var(--gray);border:1px solid var(--border);color:#333;padding:7px 8px;border-radius:var(--r);font-size:11px;font-family:inherit;outline:none}
+.qrow select:focus,.qrow input:focus{border-color:var(--blue)}
+.qrow select{flex:1}
+.qrow input{flex:2}
+.rbox{background:var(--blue-light);border:1px solid rgba(43,125,233,.2);border-radius:var(--r);padding:12px;margin-top:12px;font-size:12px}
+.rbox span{color:var(--blue);font-weight:600}
+.mwrap{flex:1;position:relative;background:#e8eaed}
+#mapCanvas{width:100%;height:100%;display:block;cursor:grab}
+#mapCanvas:active{cursor:grabbing}
+.mctrls{position:absolute;top:14px;right:14px;display:flex;flex-direction:column;gap:4px;z-index:50}
+.mbtn{width:34px;height:34px;background:var(--white);border:1px solid var(--border);color:#555;border-radius:var(--r);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;transition:all .15s;box-shadow:var(--shadow)}
+.mbtn:hover{color:var(--blue);border-color:var(--blue);box-shadow:var(--shadow-lg)}
+.mbtn.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+.zctrls{display:flex;flex-direction:column;gap:1px;border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
+.zctrls .mbtn{box-shadow:none;border:none;border-radius:0}
+.mlegend{position:absolute;bottom:18px;right:14px;background:var(--white);border:1px solid var(--border);border-radius:var(--rl);padding:12px 14px;z-index:50;min-width:140px;box-shadow:var(--shadow-lg)}
+.mlegend h5{font-size:11px;color:var(--blue);margin-bottom:8px;font-weight:600;display:flex;align-items:center;gap:5px}
+.legitem{display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 0;color:#555}
+.legcolor{width:14px;height:3px;border-radius:2px}
+.sbar{display:flex;align-items:center;height:28px;padding:0 16px;background:var(--white);border-top:1px solid var(--border);font-size:11px;color:var(--gray-t);gap:14px}
+.sitem{display:flex;align-items:center;gap:4px}
+.sdot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.sdot.loading{background:var(--orange);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.sspace{flex:1}
+.sbadge{background:var(--gray);padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;color:#333}
+.db-badge{display:flex;align-items:center;gap:5px;padding:3px 8px;border-radius:8px;font-size:10px;font-weight:500}
+.db-badge.connected{background:rgba(46,125,50,.08);color:var(--green)}
+.db-badge.init{background:rgba(245,158,11,.08);color:var(--orange)}
+.db-badge.disconnected{background:rgba(229,57,53,.08);color:var(--red)}
+.ctx{position:fixed;background:var(--white);border:1px solid var(--border);border-radius:var(--rl);padding:5px 0;z-index:2000;min-width:200px;box-shadow:var(--shadow-xl);display:none}
+.ctx.show{display:block}
+.ctxi{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:12px;cursor:pointer;color:#333;transition:background .1s}
+.ctxi:hover{background:var(--blue-light);color:var(--blue)}
+.ctxi i{width:14px;text-align:center;color:var(--gray-t);font-size:11px}
+.ctxi:hover i{color:var(--blue)}
+.ctxsep{height:1px;background:var(--border);margin:3px 0}
+.moverlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:2000;display:none;align-items:center;justify-content:center}
+.moverlay.show{display:flex}
+.modal{background:var(--white);border-radius:var(--rl);width:540px;max-width:90vw;max-height:80vh;overflow:hidden;box-shadow:var(--shadow-xl)}
+.mhdr{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.mhdr h3{font-size:15px;color:#333;font-weight:600}
+.mclose{background:0 0;border:none;color:var(--gray-t);font-size:20px;cursor:pointer;padding:4px 6px;border-radius:4px;transition:all .15s}
+.mclose:hover{background:var(--gray);color:#333}
+.mbody{padding:18px;overflow-y:auto;max-height:55vh}
+.mfoot{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:6px}
+.notif{position:fixed;top:66px;right:16px;background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:10px 16px;z-index:3000;font-size:12px;transform:translateX(120%);transition:transform .3s;box-shadow:var(--shadow-xl);display:flex;align-items:center;gap:6px}
+.notif.show{transform:translateX(0)}
+.notif.success{border-left:3px solid var(--green)}
+.notif.error{border-left:3px solid var(--red)}
+.loading{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.7);z-index:5000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+.loading.show{display:flex}
+.spinner{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:13px;color:var(--gray-t)}
+.importz{border:2px dashed var(--border);border-radius:var(--rl);padding:28px;text-align:center;cursor:pointer;transition:all .2s;background:var(--gray)}
+.importz:hover{border-color:var(--blue);background:var(--blue-light)}
+.importz i{font-size:32px;color:var(--gray-t);margin-bottom:10px}
+.importz p{font-size:13px;color:var(--gray-t)}
+.strow{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.strow label{font-size:12px;color:var(--gray-t);min-width:80px}
+.strow input[type=color]{width:36px;height:30px;border:none;cursor:pointer;border-radius:4px;background:0 0}
+.strow input[type=range]{flex:1;accent-color:var(--blue)}
+.dinput{width:100%;background:var(--gray);border:1px solid var(--border);color:#333;padding:8px 10px;border-radius:var(--r);font-size:12px;font-family:inherit;margin-bottom:6px;outline:none}
+.dinput:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(43,125,233,.1)}
+.drawind{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:var(--white);color:#333;padding:7px 16px;border-radius:16px;font-size:11px;z-index:50;display:none;box-shadow:var(--shadow-lg);border:1px solid var(--border);align-items:center;gap:6px;font-weight:500}
+.drawind.show{display:flex}
+.drawind i{color:var(--blue)}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:0 0}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:#bbb}
+.pg-panel{padding:14px}
+.pg-panel h4{font-size:13px;color:#333;margin-bottom:10px;font-weight:600;display:flex;align-items:center;gap:6px}
+.pg-panel h4 i{color:var(--blue)}
+.pg-status{padding:10px;border-radius:var(--r);margin-bottom:12px;font-size:12px;display:flex;align-items:center;gap:6px}
+.pg-status.connected{background:rgba(46,125,50,.08);border:1px solid rgba(46,125,50,.2);color:var(--green)}
+.pg-status.init{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);color:var(--orange)}
+.pg-status.error{background:rgba(229,57,53,.08);border:1px solid rgba(229,57,53,.2);color:var(--red)}
+.pg-tables{max-height:280px;overflow-y:auto;margin-top:10px}
+.pg-table-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r);cursor:pointer;transition:all .12s;border:1px solid var(--border);margin-bottom:3px}
+.pg-table-item:hover{background:var(--blue-light);border-color:rgba(43,125,233,.3)}
+.pg-t-icon{width:28px;height:28px;background:var(--blue-light);border-radius:5px;display:flex;align-items:center;justify-content:center;color:var(--blue);font-size:12px;flex-shrink:0}
+.pg-t-info{flex:1;min-width:0}
+.pg-t-name{font-size:12px;font-weight:500;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pg-t-meta{font-size:10px;color:var(--gray-t)}
+.pg-t-actions{display:none;gap:3px;flex-shrink:0}
+.pg-table-item:hover .pg-t-actions{display:flex}
+.pg-sql-area{width:100%;min-height:130px;background:var(--dark);color:#0f0;border:1px solid var(--border);border-radius:var(--r);padding:10px;font-family:'SF Mono',Consolas,monospace;font-size:12px;resize:vertical;outline:none;line-height:1.5}
+.pg-sql-area:focus{border-color:var(--blue)}
+.pg-sql-result{margin-top:10px;overflow-x:auto}
+.pg-sql-result table{width:100%;border-collapse:collapse;font-size:11px}
+.pg-sql-result th{background:var(--dark);color:#0f0;padding:6px 8px;text-align:left;font-size:10px;white-space:nowrap}
+.pg-sql-result td{padding:5px 8px;border-bottom:1px solid var(--border);color:#333;font-family:monospace;font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pg-sql-status{font-size:11px;color:var(--gray-t);margin-top:6px}
+.pg-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}
+.pg-info-card{background:var(--gray);border-radius:var(--r);padding:10px;text-align:center}
+.pg-info-card .pg-ic-value{font-size:18px;font-weight:700;color:var(--blue)}
+.pg-info-card .pg-ic-label{font-size:10px;color:var(--gray-t);margin-top:2px}
+
+/* Logout button in header */
+.logout-btn{background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.7);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:5px;transition:all .15s;margin-left:auto}
+.logout-btn:hover{background:var(--red);color:#fff}
+</style>
+</head>
+<body>
+
+<!-- === AUTH OVERLAY === -->
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-card">
+    <div class="auth-header">
+      <div class="logo"><i class="fas fa-globe-americas"></i> WebGIS <small>Авторизация</small></div>
+    </div>
+    <div class="auth-body">
+      <div class="auth-title">Вход в систему</div>
+      <form class="auth-form" id="authForm">
+        <div class="auth-input-group">
+          <input type="text" class="auth-input" id="authLogin" placeholder="Логин или email" autocomplete="username" required>
+        </div>
+        <div class="auth-input-group">
+          <input type="password" class="auth-input" id="authPassword" placeholder="Пароль" autocomplete="current-password" required>
+          <button type="button" class="auth-toggle" id="togglePassword"><i class="fas fa-eye"></i></button>
+        </div>
+        <div class="auth-options">
+          <label class="auth-remember">
+            <input type="checkbox" id="authRemember">
+            <span>Запомнить меня</span>
+          </label>
+          <a class="auth-forgot" id="forgotLink">Забыли пароль?</a>
+        </div>
+        <div class="auth-error" id="authError">
+          <i class="fas fa-circle-exclamation"></i>
+          <span id="authErrorMsg">Неверный логин или пароль</span>
+        </div>
+        <button type="submit" class="auth-btn" id="authBtn">
+          <i class="fas fa-right-to-bracket"></i>
+          <span>Войти</span>
+        </button>
+      </form>
+      <div class="auth-demo">
+        <strong>Демо-доступ:</strong><br>
+        Логин: <code>demo</code> | Пароль: <code>webgis2024</code>
+      </div>
+    </div>
+    <div class="auth-footer">
+      © 2024 WebGIS Platform • Требуется авторизация для доступа
+    </div>
+  </div>
+</div>
+
+<!-- === MAIN APP === -->
+<div class="app" id="mainApp">
+  <div class="header">
+    <div class="logo"><i class="fas fa-globe-americas"></i> WebGIS <small id="dbLabel">PostgreSQL</small></div>
+    <div class="hnav">
+      <button class="nbtn" id="bLayers" title="Слои"><i class="fas fa-layer-group"></i> Слои</button>
+      <button class="nbtn" id="bProps" title="Свойства"><i class="fas fa-table-columns"></i> Свойства</button>
+      <div class="sep"></div>
+      <button class="nbtn" id="bAddLayer" title="Добавить слой"><i class="fas fa-plus-circle"></i></button>
+      <button class="nbtn" id="bDelLayer" title="Удалить"><i class="fas fa-trash-can"></i></button>
+      <div class="sep"></div>
+      <button class="nbtn" id="bZoomFull"><i class="fas fa-expand"></i></button>
+      <button class="nbtn" id="bZoomSel"><i class="fas fa-magnifying-glass-plus"></i></button>
+      <div class="sep"></div>
+      <button class="nbtn" id="bImport"><i class="fas fa-file-import"></i> Импорт</button>
+      <button class="nbtn" id="bExport"><i class="fas fa-file-export"></i> Экспорт</button>
+      <div class="sep"></div>
+      <button class="nbtn" id="bDrawPt" title="Точка"><i class="fas fa-location-dot"></i></button>
+      <button class="nbtn" id="bDrawLn" title="Линия"><i class="fas fa-minus"></i></button>
+      <button class="nbtn" id="bDrawPl" title="Полигон"><i class="fas fa-draw-polygon"></i></button>
+      <div class="sep"></div>
+      <button class="nbtn" id="bBuffer"><i class="fas fa-circle-notch"></i> Буфер</button>
+      <button class="nbtn" id="bIntersect"><i class="fas fa-vector-square"></i> Пересечение</button>
+      <div class="sep"></div>
+      <button class="nbtn" id="bPG" title="PostGIS"><i class="fas fa-database"></i></button>
+      <button class="nbtn" id="bPGSQL" title="SQL"><i class="fas fa-terminal"></i></button>
+      <button class="nbtn" id="bStyle"><i class="fas fa-palette"></i></button>
+    </div>
+    <div class="hspacer"></div>
+    <div class="coords">
+      <div>Lat <b id="cLat">0</b></div>
+      <div>Lng <b id="cLng">0</b></div>
+      <div>Z <b id="cZoom">5</b></div>
+    </div>
+    <button class="logout-btn" id="logoutBtn" title="Выйти"><i class="fas fa-right-from-bracket"></i> Выход</button>
+  </div>
+
+  <div class="main">
+    <div class="sleft" id="sLeft">
+      <div class="ssearch"><input class="sinput" id="searchIn" placeholder="Поиск объектов..."></div>
+      <div class="shdr"><h3>Слои</h3><button class="ibtn" id="bRefreshDB" title="Обновить из БД"><i class="fas fa-rotate"></i></button></div>
+      <div class="llist" id="lList"></div>
+    </div>
+    <div class="mwrap">
+      <canvas id="mapCanvas"></canvas>
+      <div class="drawind" id="drawInd"><i class="fas fa-pen-nib"></i> <span id="drawLbl"></span> <button class="btn btn-s btn-sm" id="bCancelDraw" style="margin-left:6px;padding:2px 8px;font-size:10px;">Отмена</button></div>
+      <div class="mctrls">
+        <div class="zctrls">
+          <button class="mbtn" id="bZI"><i class="fas fa-plus"></i></button>
+          <button class="mbtn" id="bZO"><i class="fas fa-minus"></i></button>
+        </div>
+        <button class="mbtn" id="bLoc"><i class="fas fa-crosshairs"></i></button>
+        <button class="mbtn" id="bMeasure"><i class="fas fa-ruler-combined"></i></button>
+        <button class="mbtn" id="bBase"><i class="fas fa-map"></i></button>
+      </div>
+      <div class="mlegend" id="legBox"><h5><i class="fas fa-info-circle"></i> Легенда</h5><div id="legCnt"></div></div>
+    </div>
+    <div class="sright" id="sRight">
+      <div class="tabs">
+        <button class="tbtn on" data-t="prop">Свойства</button>
+        <button class="tbtn" data-t="attr">Атрибуты</button>
+        <button class="tbtn" data-t="query">Запрос</button>
+        <button class="tbtn" data-t="postgis">PostGIS</button>
+      </div>
+      <div class="tcontent on" id="t-prop"><div class="ppanel" id="pPanel"><div class="pempty"><i class="fas fa-mouse-pointer"></i><p>Выберите объект</p></div></div></div>
+      <div class="tcontent" id="t-attr"><div class="atoolbar"><select id="aSel"></select><button class="btn btn-s btn-sm" id="bExpTbl"><i class="fas fa-download"></i></button></div><div style="overflow-x:auto;max-height:calc(100vh - 160px);overflow-y:auto;"><table class="atbl"><thead id="aHead"></thead><tbody id="aBody"></tbody></table></div></div>
+      <div class="tcontent" id="t-query"><div class="qpanel">
+        <h4>Атрибутивный запрос</h4>
+        <div class="qrow"><select id="qL"><option value="">Выберите слой</option></select></div>
+        <div class="qrow"><select id="qF"><option>Поле</option></select><select id="qOp"><option value="=">=</option><option value="!=">≠</option><option value=">">&gt;</option><option value="<">&lt;</option><option value="contains">Содержит</option></select><input id="qV" placeholder="Значение"></div>
+        <div style="display:flex;gap:6px"><button class="btn btn-p btn-sm" id="bExecQ"><i class="fas fa-play"></i> Выполнить</button><button class="btn btn-s btn-sm" id="bClearQ"><i class="fas fa-xmark"></i></button></div>
+        <div class="rbox" id="qRes" style="display:none"></div>
+        <h4 style="margin-top:16px">Пространственный запрос</h4>
+        <div class="qrow"><select id="spL1"><option value="">Слой 1</option></select><select id="spOp"><option value="intersects">Пересекает</option><option value="contains">Содержит</option></select><select id="spL2"><option value="">Слой 2</option></select></div>
+        <button class="btn btn-p btn-sm" id="bSpQ"><i class="fas fa-play"></i> Выполнить</button>
+        <div class="rbox" id="spRes" style="display:none"></div>
+      </div></div>
+      <div class="tcontent" id="t-postgis"><div class="pg-panel" id="pgPanel"></div></div>
+    </div>
+  </div>
+
+  <div class="sbar">
+    <div class="sitem"><div class="sdot" id="statusDot"></div> <span id="statusText">Инициализация...</span></div>
+    <div class="db-badge init" id="pgBadge"><i class="fas fa-database"></i> <span id="pgBadgeText">Подключение к БД...</span></div>
+    <div class="sitem">Слоёв <span class="sbadge" id="sL">0</span></div>
+    <div class="sitem">Объектов <span class="sbadge" id="sF">0</span></div>
+    <div class="sspace"></div>
+    <div class="sitem" id="sScale">1:100000</div>
+    <div class="sitem" id="userInfo"></div>
+  </div>
+</div>
+
+<div class="ctx" id="ctx">
+  <div class="ctxi" id="xCtxPt"><i class="fas fa-location-dot"></i> Добавить точку</div>
+  <div class="ctxi" id="xSavePG"><i class="fas fa-database"></i> Сохранить в БД</div>
+  <div class="ctxi" id="xCtr"><i class="fas fa-crosshairs"></i> Центрировать</div>
+  <div class="ctxi" id="xCop"><i class="fas fa-copy"></i> Копировать координаты</div>
+  <div class="ctxsep"></div>
+  <div class="ctxi" id="xDel"><i class="fas fa-trash-can"></i> Удалить</div>
+  <div class="ctxi" id="xProp"><i class="fas fa-circle-info"></i> Свойства</div>
+</div>
+
+<div class="moverlay" id="mOv">
+  <div class="modal">
+    <div class="mhdr"><h3 id="mTitle"></h3><button class="mclose" id="mCls">&times;</button></div>
+    <div class="mbody" id="mBody"></div>
+    <div class="mfoot" id="mFoot"></div>
+  </div>
+</div>
+
+<div class="notif" id="notif"></div>
+<div class="loading" id="load"><div class="spinner"></div><div class="loading-text" id="loadText">Загрузка...</div></div>
+
+<script>
+// ==================== AUTH CONFIG ====================
+const AUTH_CONFIG = {
+  API_BASE: '/api',
+  // Демо-учётные данные (в продакшене использовать только серверную валидацию!)
+  DEMO_CREDENTIALS: { login: 'demo', password: 'webgis2024' },
+  TOKEN_KEY: 'webgis_auth_token',
+  USER_KEY: 'webgis_user_info',
+  SESSION_TIMEOUT: 8 * 60 * 60 * 1000 // 8 часов
+};
+
+// ==================== AUTH MODULE ====================
+const Auth = {
+  currentUser: null,
+  token: null,
+  
+  init() {
+    // Проверка сохранённой сессии
+    const savedToken = localStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
+    const savedUser = localStorage.getItem(AUTH_CONFIG.USER_KEY);
+    const lastLogin = localStorage.getItem('webgis_last_login');
+    
+    if (savedToken && savedUser && lastLogin) {
+      const elapsed = Date.now() - parseInt(lastLogin);
+      if (elapsed < AUTH_CONFIG.SESSION_TIMEOUT) {
+        this.token = savedToken;
+        this.currentUser = JSON.parse(savedUser);
+        this.showApp();
+        return;
+      }
+    }
+    // Если сессия истекла или нет данных - показать форму
+    this.showAuth();
+  },
+  
+  showAuth() {
+    document.getElementById('authOverlay').classList.remove('hidden');
+    document.getElementById('mainApp').style.opacity = '0';
+    document.getElementById('authLogin').focus();
+  },
+  
+  showApp() {
+    document.getElementById('authOverlay').classList.add('hidden');
+    document.getElementById('mainApp').classList.add('ready');
+    this.updateUserInfo();
+  },
+  
+  async login(login, password, remember) {
+    // Демо-режим (в продакшене заменить на реальный API вызов)
+    if (login === AUTH_CONFIG.DEMO_CREDENTIALS.login && 
+        password === AUTH_CONFIG.DEMO_CREDENTIALS.password) {
+      
+      this.token = 'demo_token_' + Date.now() + '_' + Math.random().toString(36).substr(2);
+      this.currentUser = {
+        login: login,
+        name: 'Демо-пользователь',
+        role: 'user',
+        permissions: ['read', 'write']
+      };
+      
+      if (remember) {
+        localStorage.setItem(AUTH_CONFIG.TOKEN_KEY, this.token);
+        localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(this.currentUser));
+        localStorage.setItem('webgis_last_login', Date.now().toString());
+      } else {
+        sessionStorage.setItem(AUTH_CONFIG.TOKEN_KEY, this.token);
+        sessionStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(this.currentUser));
+      }
+      
+      this.showApp();
+      return { success: true };
+    }
+    
+    // Реальная авторизация через API (раскомментировать для продакшена)
+    /*
+    try {
+      const response = await fetch(`${AUTH_CONFIG.API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login, password })
+      });
+      const data = await response.json();
+      
+      if (!response.ok) throw new Error(data.error || 'Ошибка авторизации');
+      
+      this.token = data.token;
+      this.currentUser = data.user;
+      
+      if (remember) {
+        localStorage.setItem(AUTH_CONFIG.TOKEN_KEY, this.token);
+        localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(this.currentUser));
+        localStorage.setItem('webgis_last_login', Date.now().toString());
+      } else {
+        sessionStorage.setItem(AUTH_CONFIG.TOKEN_KEY, this.token);
+        sessionStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(this.currentUser));
+      }
+      
+      this.showApp();
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+    */
+    
+    return { success: false, error: 'Неверный логин или пароль' };
+  },
+  
+  logout() {
+    localStorage.removeItem(AUTH_CONFIG.TOKEN_KEY);
+    localStorage.removeItem(AUTH_CONFIG.USER_KEY);
+    localStorage.removeItem('webgis_last_login');
+    sessionStorage.removeItem(AUTH_CONFIG.TOKEN_KEY);
+    sessionStorage.removeItem(AUTH_CONFIG.USER_KEY);
+    
+    this.token = null;
+    this.currentUser = null;
+    
+    // Перезагрузка страницы для полного сброса состояния
+    location.reload();
+  },
+  
+  updateUserInfo() {
+    if (this.currentUser) {
+      document.getElementById('userInfo').innerHTML = 
+        `<span style="font-size:10px;color:var(--gray-t)">👤 ${this.currentUser.name || this.currentUser.login}</span>`;
+    }
+  },
+  
+  getAuthHeaders() {
+    return {
+      'Authorization': `Bearer ${this.token}`,
+      'Content-Type': 'application/json'
+    };
+  },
+  
+  isAuthenticated() {
+    return !!this.token && !!this.currentUser;
+  }
+};
+
+// ==================== GLOBALS & API CONFIG ====================
+const API_BASE = '/api';
+
+async function apiFetch(endpoint, options = {}) {
+  // Добавляем auth заголовки если пользователь авторизован
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+    ...Auth.getAuthHeaders()
+  };
+  
+  const config = { 
+    headers, 
+    method: options.method || 'GET' 
+  };
+  if (options.body) config.body = JSON.stringify(options.body);
+  
+  try {
+    const response = await fetch(`${API_BASE}${endpoint}`, config);
+    
+    // Обработка 401 - сессия истекла
+    if (response.status === 401) {
+      Auth.logout();
+      throw new Error('Сессия истекла. Пожалуйста, войдите снова.');
+    }
+    
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'API error');
+    return data;
+  } catch (e) {
+    if (e.message.includes('Failed to fetch')) {
+      throw new Error('Нет соединения с сервером');
+    }
+    throw e;
+  }
+}
+
+let pgdb = null, pgReady = false, pgError = null;
+
+const GISDB = {
+  layers: {}, order: [], id: 1,
+  init() {
+    const s = localStorage.getItem('gisdb5');
+    if (s) { try { const d = JSON.parse(s); this.layers = d.layers||{}; this.order = d.order||[]; this.id = d.id||1; } catch(e){} }
+    if (!Object.keys(this.layers).length) this.seed();
+  },
+  save() { localStorage.setItem('gisdb5', JSON.stringify({layers:this.layers,order:this.order,id:this.id})); },
+  add(name,type,features,color,source='local') {
+    const id = 'l'+(this.id++);
+    this.layers[id] = {id,name,type,features:features||[],color:color||'#2b7de9',visible:true,opacity:1,source};
+    this.order.push(id); this.save(); return id;
+  },
+  remove(id) { delete this.layers[id]; this.order = this.order.filter(x=>x!==id); this.save(); },
+  update(id,p) { if(this.layers[id]) Object.assign(this.layers[id],p); this.save(); },
+  get(id) { return this.layers[id]; },
+  visible() { return this.order.filter(id=>this.layers[id]&&this.layers[id].visible).map(id=>this.layers[id]); },
+  total() { let n=0; for(const l of Object.values(this.layers)) n+=l.features.length; return n; },
+  seed() {
+    this.add('Города России','Point',[{type:'Feature',id:'f1',geometry:{type:'Point',coordinates:[37.6173,55.7558]},properties:{name:'Москва',population:12632409,type:'city',category:'Город'}}],'#2b7de9');
+    this.save();
+  }
+};
+
+// ==================== MAP ENGINE ====================
+const Map = {
+  canvas:null,ctx:null,center:{lat:55.75,lng:49.12},zoom:5,tileSize:256,
+  dragging:false,dragStart:{x:0,y:0},dragCenter:{lat:0,lng:0},
+  tiles:{},drawMode:null,drawPoints:[],measureMode:false,measurePoints:[],
+  basemap:0,
+  basemaps:[
+    {name:'Схема',url:'https://core-renderer-tiles.maps.yandex.net/tiles?l=map&v=4.55.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU'},
+    {name:'Спутник',url:'https://core-sat.maps.yandex.net/tiles?l=sat&v=3.2008.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU'},
+    {name:'Гибрид',url:'https://core-sat.maps.yandex.net/tiles?l=sat&v=3.2008.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU'}
+  ],
+  ctxLatLng:null,selectedFeature:null,selectedLayerId:null,hoveredFeature:null,w:0,h:0,drawMouseLat:null,drawMouseLng:null,
+
+  init(){
+    this.canvas=document.getElementById('mapCanvas');
+    this.ctx=this.canvas.getContext('2d');
+    this.resize(); window.addEventListener('resize',()=>this.resize());
+    this.bindEvents(); this.render();
+  },
+  resize(){
+    const wrap=this.canvas.parentElement; const dpr=window.devicePixelRatio||1;
+    this.w=wrap.clientWidth; this.h=wrap.clientHeight;
+    this.canvas.width=this.w*dpr; this.canvas.height=this.h*dpr;
+    this.canvas.style.width=this.w+'px'; this.canvas.style.height=this.h+'px';
+    this.ctx.setTransform(dpr,0,0,dpr,0,0); this.render();
+  },
+  ll2px(lat,lng){const s=Math.pow(2,this.zoom);const x=(lng+180)/360*s*this.tileSize;const r=lat*Math.PI/180;const y=(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*s*this.tileSize;return{x,y};},
+  px2ll(px,py){const s=Math.pow(2,this.zoom);const lng=px/(this.tileSize*s)*360-180;const n=Math.PI-2*Math.PI*py/(this.tileSize*s);const lat=180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n)));return{lat,lng};},
+  cp(){return this.ll2px(this.center.lat,this.center.lng);},
+  render(){this.loadTiles();this.ctx.clearRect(0,0,this.w,this.h);this.drawTiles();this.drawFeatures();this.drawMeasure();this.drawPreview();},
+  loadTiles(){
+    const cp=this.cp();const cx=this.w/2-cp.x,cy=this.h/2-cp.y;
+    const minTX=Math.floor(-cx/this.tileSize)-1,maxTX=Math.ceil((this.w-cx)/this.tileSize)+1;
+    const minTY=Math.floor(-cy/this.tileSize)-1,maxTY=Math.ceil((this.h-cy)/this.tileSize)+1;
+    const scale=Math.pow(2,this.zoom);const maxTY2=scale-1;
+    for(let tx=minTX;tx<=maxTX;tx++){for(let ty=minTY;ty<=maxTY;ty++){
+      const key=this.zoom+'_'+tx+'_'+ty;
+      if(!this.tiles[key]){
+        const wtx=((tx%scale)+scale)%scale;const wty=Math.max(0,Math.min(maxTY2,ty));
+        const url=this.basemaps[this.basemap].url.replace('{x}',wtx).replace('{y}',wty).replace('{z}',this.zoom);
+        const img=new Image();img.crossOrigin='anonymous';
+        img.onload=()=>{this.tiles[key]={img,tx,ty};this.render();};
+        img.onerror=()=>{this.tiles[key]={img:null,tx,ty};};
+        img.src=url;this.tiles[key]={img:null,tx,ty,loading:true};
+      }
+    }}
+  },
+  drawTiles(){
+    const cp=this.cp();const cx=this.w/2-cp.x,cy=this.h/2-cp.y;
+    this.ctx.fillStyle='#e8eaed';this.ctx.fillRect(0,0,this.w,this.h);
+    for(const key in this.tiles){const t=this.tiles[key];if(!t.img)continue;this.ctx.drawImage(t.img,t.tx*this.tileSize+cx,t.ty*this.tileSize+cy,this.tileSize,this.tileSize);}
+  },
+  drawFeatures(){
+    const cp=this.cp();const cx=this.w/2-cp.x,cy=this.h/2-cp.y;
+    for(const layer of GISDB.visible()){
+      for(const f of layer.features){
+        const geo=f.geometry;if(!geo)continue;const color=layer.color;
+        const isSel=this.selectedFeature&&this.selectedFeature.id===f.id;
+        const isHov=this.hoveredFeature&&this.hoveredFeature.id===f.id;const active=isSel||isHov;
+        this.ctx.save();if(active){this.ctx.shadowColor=color;this.ctx.shadowBlur=isSel?15:10;}
+        if(geo.type==='Point'){
+          const p=this.ll2px(geo.coordinates[1],geo.coordinates[0]);const x=p.x+cx,y=p.y+cy;
+          this.ctx.beginPath();this.ctx.arc(x,y,isSel?9:7,0,Math.PI*2);this.ctx.fillStyle=color;this.ctx.fill();
+          this.ctx.strokeStyle='#fff';this.ctx.lineWidth=2.5;this.ctx.stroke();
+          if(active){this.ctx.beginPath();this.ctx.arc(x,y,13,0,Math.PI*2);this.ctx.strokeStyle=color;this.ctx.lineWidth=1.5;this.ctx.globalAlpha=0.4;this.ctx.stroke();this.ctx.globalAlpha=1;}
+          if(this.zoom>=6&&f.properties.name){this.ctx.shadowBlur=0;this.ctx.font='600 11px Inter,sans-serif';this.ctx.fillStyle='#333';this.ctx.fillText(f.properties.name,x+12,y+4);}
+        }else if(geo.type==='LineString'){
+          this.ctx.beginPath();this.ctx.strokeStyle=color;this.ctx.lineWidth=isSel?4:3;this.ctx.lineJoin='round';this.ctx.lineCap='round';
+          for(let i=0;i<geo.coordinates.length;i++){const p=this.ll2px(geo.coordinates[i][1],geo.coordinates[i][0]);if(i===0)this.ctx.moveTo(p.x+cx,p.y+cy);else this.ctx.lineTo(p.x+cx,p.y+cy);}
+          this.ctx.stroke();
+        }else if(geo.type==='Polygon'||geo.type==='MultiPolygon'){
+          const rings=geo.type==='MultiPolygon'?geo.coordinates.map(p=>p[0]):[geo.coordinates[0]];
+          for(const ring of rings){
+            this.ctx.beginPath();for(let i=0;i<ring.length;i++){const p=this.ll2px(ring[i][1],ring[i][0]);if(i===0)this.ctx.moveTo(p.x+cx,p.y+cy);else this.ctx.lineTo(p.x+cx,p.y+cy);}
+            this.ctx.closePath();this.ctx.fillStyle=color+'22';this.ctx.fill();this.ctx.strokeStyle=color;this.ctx.lineWidth=isSel?3:2;this.ctx.stroke();
+          }
+        }
+        this.ctx.restore();
+      }
+    }
+  },
+  drawMeasure(){
+    if(!this.measureMode||this.measurePoints.length<2)return;
+    const cp=this.cp();const cx=this.w/2-cp.x,cy=this.h/2-cp.y;
+    this.ctx.save();this.ctx.strokeStyle='#2e7d32';this.ctx.lineWidth=2;this.ctx.setLineDash([6,4]);
+    this.ctx.beginPath();for(let i=0;i<this.measurePoints.length;i++){const p=this.ll2px(this.measurePoints[i].lat,this.measurePoints[i].lng);if(i===0)this.ctx.moveTo(p.x+cx,p.y+cy);else this.ctx.lineTo(p.x+cx,p.y+cy);}
+    this.ctx.stroke();this.ctx.setLineDash([]);
+    for(const pt of this.measurePoints){const p=this.ll2px(pt.lat,pt.lng);this.ctx.beginPath();this.ctx.arc(p.x+cx,p.y+cy,4,0,Math.PI*2);this.ctx.fillStyle='#fff';this.ctx.fill();this.ctx.strokeStyle='#2e7d32';this.ctx.lineWidth=2;this.ctx.stroke();}
+    if(this.measurePoints.length>1){let total=0;for(let i=1;i<this.measurePoints.length;i++){total+=turf.distance(turf.point([this.measurePoints[i-1].lng,this.measurePoints[i-1].lat]),turf.point([this.measurePoints[i].lng,this.measurePoints[i].lat]),{units:'km'});}
+    const last=this.measurePoints[this.measurePoints.length-1];const lp=this.ll2px(last.lat,last.lng);this.ctx.font='600 12px Inter';this.ctx.fillStyle='#2e7d32';this.ctx.fillText(total.toFixed(2)+' км',lp.x+cx+10,lp.y+cy-10);}
+    this.ctx.restore();
+  },
+  drawPreview(){
+    if(!this.drawMode)return;const cp=this.cp();const cx=this.w/2-cp.x,cy=this.h/2-cp.y;
+    this.ctx.save();this.ctx.strokeStyle='#2b7de9';this.ctx.fillStyle='rgba(43,125,233,0.1)';this.ctx.lineWidth=2;this.ctx.setLineDash([5,3]);
+    if(this.drawMode==='line'&&this.drawPoints.length>0){this.ctx.beginPath();for(let i=0;i<this.drawPoints.length;i++){const p=this.ll2px(this.drawPoints[i].lat,this.drawPoints[i].lng);if(i===0)this.ctx.moveTo(p.x+cx,p.y+cy);else this.ctx.lineTo(p.x+cx,p.y+cy);}if(this.drawMouseLat!==null){const p=this.ll2px(this.drawMouseLat,this.drawMouseLng);this.ctx.lineTo(p.x+cx,p.y+cy);}this.ctx.stroke();}
+    else if(this.drawMode==='poly'&&this.drawPoints.length>0){this.ctx.beginPath();for(let i=0;i<this.drawPoints.length;i++){const p=this.ll2px(this.drawPoints[i].lat,this.drawPoints[i].lng);if(i===0)this.ctx.moveTo(p.x+cx,p.y+cy);else this.ctx.lineTo(p.x+cx,p.y+cy);}if(this.drawMouseLat!==null){const p=this.ll2px(this.drawMouseLat,this.drawMouseLng);this.ctx.lineTo(p.x+cx,p.y+cy);}this.ctx.closePath();this.ctx.fill();this.ctx.stroke();}
+    for(const pt of this.drawPoints){const p=this.ll2px(pt.lat,pt.lng);this.ctx.beginPath();this.ctx.arc(p.x+cx,p.y+cy,5,0,Math.PI*2);this.ctx.fillStyle='#2b7de9';this.ctx.fill();this.ctx.strokeStyle='#fff';this.ctx.lineWidth=2;this.ctx.stroke();}
+    this.ctx.restore();
+  },
+  s2ll(sx,sy){const cp=this.cp();const px=sx-this.w/2+cp.x,py=sy-this.h/2+cp.y;return this.px2ll(px,py);},
+  findAt(sx,sy){
+    const ll=this.s2ll(sx,sy);const threshold=12/Math.pow(2,this.zoom-10);
+    for(const layer of GISDB.visible()){for(const f of layer.features){const geo=f.geometry;if(!geo)continue;if(geo.type==='Point'){const dx=geo.coordinates[0]-ll.lng,dy=geo.coordinates[1]-ll.lat;if(Math.sqrt(dx*dx+dy*dy)<threshold*3)return{feature:f,layerId:layer.id};}}}
+    for(const layer of GISDB.visible()){for(const f of layer.features){const geo=f.geometry;if(!geo)continue;try{const pt=turf.point([ll.lng,ll.lat]);if(geo.type==='Polygon'||geo.type==='MultiPolygon'){const coords=geo.type==='MultiPolygon'?geo.coordinates[0][0]:geo.coordinates[0];if(turf.booleanPointInPolygon(pt,turf.polygon([coords])))return{feature:f,layerId:layer.id};}else if(geo.type==='LineString'){const dist=turf.pointToLineDistance(pt,turf.lineString(geo.coordinates),{units:'km'});if(dist<threshold*0.3)return{feature:f,layerId:layer.id};}}catch(e){}}}
+    return null;
+  },
+  zoomAt(sx,sy,delta){const old=this.zoom;this.zoom=Math.max(2,Math.min(18,this.zoom+delta));if(old!==this.zoom){const ll=this.s2ll(sx,sy);this.center={lat:ll.lat,lng:ll.lng};this.render();}},
+  finishDraw(){
+    if(this.drawMode==='line'&&this.drawPoints.length>=2){const coords=this.drawPoints.map(p=>[p.lng,p.lat]);App.addFeatureToLayer({type:'Feature',geometry:{type:'LineString',coordinates:coords},properties:{name:'Линия',type:'manual',created:new Date().toISOString()}},'Line');}
+    else if(this.drawMode==='poly'&&this.drawPoints.length>=3){const coords=[this.drawPoints.map(p=>[p.lng,p.lat])];coords[0].push(coords[0][0]);App.addFeatureToLayer({type:'Feature',geometry:{type:'Polygon',coordinates:coords},properties:{name:'Полигон',type:'manual',created:new Date().toISOString()}},'Polygon');}
+    this.drawPoints=[];this.drawMode=null;this.drawMouseLat=null;this.drawMouseLng=null;
+    document.getElementById('drawInd').classList.remove('show');this.render();App.updateUI();
+  },
+  bindEvents(){
+    this.canvas.addEventListener('mousedown',e=>{if(this.drawMode==='line'||this.drawMode==='poly'){const ll=this.s2ll(e.offsetX,e.offsetY);this.drawPoints.push({lat:ll.lat,lng:ll.lng});return;}this.dragging=true;this.dragStart={x:e.offsetX,y:e.offsetY};this.dragCenter={...this.center};});
+    this.canvas.addEventListener('mousemove',e=>{const ll=this.s2ll(e.offsetX,e.offsetY);document.getElementById('cLat').textContent=ll.lat.toFixed(4);document.getElementById('cLng').textContent=ll.lng.toFixed(4);if(this.drawMode==='line'||this.drawMode==='poly'){this.drawMouseLat=ll.lat;this.drawMouseLng=ll.lng;this.render();return;}if(this.dragging){const dx=e.offsetX-this.dragStart.x,dy=e.offsetY-this.dragStart.y;const cp1=this.ll2px(this.dragCenter.lat,this.dragCenter.lng);const cp2=this.px2ll(cp1.x-dx,cp1.y-dy);this.center={lat:cp2.lat,lng:cp2.lng};this.render();}const hit=this.findAt(e.offsetX,e.offsetY);if(hit){this.hoveredFeature=hit.feature;this.canvas.style.cursor='pointer';this.render();}else{this.hoveredFeature=null;this.canvas.style.cursor=this.dragging?'grabbing':'grab';this.render();}});
+    this.canvas.addEventListener('mouseup',()=>{this.dragging=false;});
+    this.canvas.addEventListener('mouseleave',()=>{this.dragging=false;});
+    this.canvas.addEventListener('dblclick',e=>{if(this.drawMode==='line'||this.drawMode==='poly'){this.finishDraw();return;}const ll=this.s2ll(e.offsetX,e.offsetY);this.center={lat:ll.lat,lng:ll.lng};this.zoom=Math.min(this.zoom+1,18);this.render();});
+    this.canvas.addEventListener('wheel',e=>{e.preventDefault();this.zoomAt(e.offsetX,e.offsetY,e.deltaY>0?-1:1);},{passive:false});
+    this.canvas.addEventListener('contextmenu',e=>{e.preventDefault();this.ctxLatLng=this.s2ll(e.offsetX,e.offsetY);App.showCtx(e.clientX,e.clientY);});
+    this.canvas.addEventListener('click',e=>{if(this.drawMode==='point'){const ll=this.s2ll(e.offsetX,e.offsetY);App.addPointFeature(ll.lat,ll.lng);return;}if(this.measureMode){const ll=this.s2ll(e.offsetX,e.offsetY);this.measurePoints.push(ll);if(this.measurePoints.length>1){let total=0;for(let i=1;i<this.measurePoints.length;i++){total+=turf.distance(turf.point([this.measurePoints[i-1].lng,this.measurePoints[i-1].lat]),turf.point([this.measurePoints[i].lng,this.measurePoints[i].lat]),{units:'km'});}App.notify('Расстояние: '+total.toFixed(2)+' км','success');}this.render();return;}const hit=this.findAt(e.offsetX,e.offsetY);if(hit)App.selectFeature(hit.feature,hit.layerId);else App.deselectAll();});
+    document.addEventListener('click',()=>App.hideCtx());
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(this.drawMode)document.getElementById('bCancelDraw').click();if(this.measureMode){this.measureMode=false;this.measurePoints=[];this.render();document.getElementById('bMeasure').classList.remove('active');}App.hideModal();}});
+  }
+};
+
+// ==================== DB API FUNCTIONS ====================
+async function initRealPG() {
+  if (!Auth.isAuthenticated()) return;
+  
+  showLoading('Подключение к серверу...');
+  try {
+    const stats = await apiFetch('/stats');
+    pgReady = true; pgError = null;
+    document.getElementById('statusDot').className = 'sdot';
+    document.getElementById('statusText').textContent = 'PostgreSQL (сервер)';
+    document.getElementById('pgBadge').className = 'db-badge connected';
+    document.getElementById('pgBadgeText').textContent = `БД: ${stats.dbSize}`;
+    document.getElementById('dbLabel').textContent = 'PostgreSQL';
+    hideLoading();
+    App.notify('Подключено к серверной БД', 'success');
+    App.renderPostGISPanel();
+  } catch (e) {
+    pgError = e.message;
+    document.getElementById('pgBadge').className = 'db-badge error';
+    document.getElementById('pgBadgeText').textContent = 'Ошибка подключения';
+    hideLoading();
+    App.notify('Ошибка: ' + e.message, 'error');
+    App.renderPostGISPanel();
+  }
+}
+
+async function loadLayerFromPG(layerId, layerName, geoType, color) {
+  showLoading('Загрузка из БД...');
+  try {
+    const data = await apiFetch(`/layers/${layerId}/features`);
+    const features = data.features.map(f => ({...f, properties: {...f.properties, source: 'postgresql'}}));
+    const lid = GISDB.add('PG: ' + layerName, geoType === 'LINESTRING' ? 'Line' : geoType === 'POLYGON' ? 'Polygon' : 'Point', features, color, 'postgresql');
+    hideLoading(); App.updateUI(); Map.render(); App.zoomToLayer(lid);
+    App.notify(`Загружено ${features.length} объектов`, 'success'); return lid;
+  } catch (e) { hideLoading(); App.notify('Ошибка: ' + e.message, 'error'); return null; }
+}
+
+async function executePGSQL(sql) {
+  try {
+    const result = await apiFetch('/sql', { method: 'POST', body: { sql } });
+    return { results: [{ command: 'SELECT', rows: result.rows, fields: result.rows[0] ? Object.keys(result.rows[0]).map(n=>({name:n})) : [] }] };
+  } catch (e) { return { error: e.message }; }
+}
+
+async function insertFeatureToPG(layerName, geomType, coordinates, properties) {
+  try {
+    let layers = await apiFetch('/layers');
+    let layer = layers.find(l => l.name === layerName);
+    let layerId = layer ? layer.id : (await apiFetch('/layers', { method:'POST', body:{ name:layerName, layer_type: geomType==='Point'?'Point':geomType==='Line'?'LineString':'Polygon', color:'#2b7de9' } })).id;
+    let geometry = geomType==='Point' ? {type:'Point',coordinates} : geomType==='Line' ? {type:'LineString',coordinates} : {type:'Polygon',coordinates:[coordinates]};
+    await apiFetch(`/layers/${layerId}/features`, { method:'POST', body:{ geometry, properties:{...properties, source:'postgresql'} } });
+    return { success: true };
+  } catch (e) { return { error: e.message }; }
+}
+
+async function getPGTables() { try { return await apiFetch('/layers'); } catch(e) { return []; } }
+async function getPGStats() { try { return await apiFetch('/stats'); } catch(e) { return null; } }
+async function deleteFeatureFromPG(pgid) { await apiFetch(`/features/${pgid}`, { method:'DELETE' }); }
+async function deleteLayerFromPG(layerId) { await apiFetch(`/layers/${layerId}`, { method:'DELETE' }); }
+
+function showLoading(text) { document.getElementById('loadText').textContent = text || 'Загрузка...'; document.getElementById('load').classList.add('show'); }
+function hideLoading() { document.getElementById('load').classList.remove('show'); }
+
+// ==================== APP ====================
+const App = {
+  init() { 
+    // Инициализация авторизации ПЕРЕД всем остальным
+    Auth.init();
+    
+    // Остальная инициализация только после успешной авторизации
+    if (Auth.isAuthenticated()) {
+      GISDB.init(); 
+      Map.init(); 
+      this.bindUI(); 
+      this.updateUI();
+      initRealPG();
+    }
+  },
+  
+  updateUI() { 
+    this.renderLayerList(); 
+    this.renderAttrTable(); 
+    this.renderLegend(); 
+    this.populateSelects(); 
+    document.getElementById('sL').textContent = GISDB.order.length; 
+    document.getElementById('sF').textContent = GISDB.total(); 
+    document.getElementById('cZoom').textContent = Map.zoom; 
+    const scale = Math.round(100000 / Math.pow(2, Map.zoom - 10)); 
+    document.getElementById('sScale').textContent = '1:' + scale; 
+  },
+  
+  selectFeature(f, lid) { 
+    Map.selectedFeature = f; 
+    Map.selectedLayerId = lid; 
+    this.showProps(f); 
+    document.getElementById('sS').textContent = '1'; 
+    Map.render(); 
+    document.querySelectorAll('.atbl tbody tr').forEach(tr => tr.classList.toggle('sel', tr.dataset.id === f.id)); 
+  },
+  
+  deselectAll() { 
+    Map.selectedFeature = null; 
+    Map.selectedLayerId = null; 
+    document.getElementById('sS').textContent = '0'; 
+    document.getElementById('pPanel').innerHTML = '<div class="pempty"><i class="fas fa-mouse-pointer"></i><p>Выберите объект на карте</p></div>'; 
+    document.querySelectorAll('.atbl tbody tr').forEach(tr => tr.classList.remove('sel')); 
+    Map.render(); 
+  },
+  
+  showProps(f) {
+    const p = f.properties || {}, g = f.geometry; const isPG = p.source === 'postgresql';
+    let h = '<div class="pgrp"><div class="pgrpt">Информация</div>';
+    if (isPG) h += '<div style="background:rgba(43,125,233,.08);border:1px solid rgba(43,125,233,.2);border-radius:6px;padding:8px;margin-bottom:8px;font-size:11px;color:var(--blue);"><i class="fas fa-database"></i> Источник: PostgreSQL (ID: ' + (p._pgid || '?') + ')</div>';
+    h += '<div class="prow"><span class="plbl">ID</span><span class="pval">' + f.id.slice(0, 14) + '...</span></div>';
+    h += '<div class="prow"><span class="plbl">Тип</span><span class="pval">' + g.type + '</span></div></div>';
+    h += '<div class="pgrp"><div class="pgrpt">Геометрия</div>';
+    if (g.type === 'Point') { h += '<div class="prow"><span class="plbl">Широта</span><span class="pval">' + g.coordinates[1].toFixed(6) + '</span></div>'; h += '<div class="prow"><span class="plbl">Долгота</span><span class="pval">' + g.coordinates[0].toFixed(6) + '</span></div>'; }
+    else if (g.type === 'LineString') { try { const len = turf.length(turf.lineString(g.coordinates), {units:'km'}); h += '<div class="prow"><span class="plbl">Длина</span><span class="pval">' + len.toFixed(2) + ' км</span></div>'; } catch(e) {} h += '<div class="prow"><span class="plbl">Вершин</span><span class="pval">' + g.coordinates.length + '</span></div>'; }
+    else if (g.type === 'Polygon' || g.type === 'MultiPolygon') { try { const area = turf.area(turf.polygon(g.type==='MultiPolygon'?g.coordinates[0][0]:g.coordinates[0])); h += '<div class="prow"><span class="plbl">Площадь</span><span class="pval">' + (area/1e6).toFixed(4) + ' км²</span></div>'; } catch(e) {} }
+    h += '</div><div class="pgrp"><div class="pgrpt">Атрибуты</div>';
+    for (const k in p) { if (k !== 'source') h += '<div class="prow"><span class="plbl">' + k + '</span><span class="pval">' + p[k] + '</span></div>'; }
+    h += '</div><div class="pacts"><button class="btn btn-p btn-sm" onclick="App.editFeature()"><i class="fas fa-pen"></i> Изменить</button>';
+    if (isPG) h += '<button class="btn btn-s btn-sm" onclick="App.updateInPG()"><i class="fas fa-database"></i> Обновить в БД</button>'; else h += '<button class="btn btn-s btn-sm" onclick="App.saveToPG()"><i class="fas fa-database"></i> В БД</button>';
+    h += '<button class="btn btn-s btn-sm" onclick="App.delFeature()"><i class="fas fa-trash-can"></i> Удалить</button>';
+    h += '<button class="btn btn-s btn-sm" onclick="App.zoomTo()"><i class="fas fa-magnifying-glass-plus"></i></button></div>';
+    document.getElementById('pPanel').innerHTML = h;
+  },
+  
+  updateInPG() {
+    const f = Map.selectedFeature; if (!f) return; const p = f.properties || {}; const pgid = p._pgid; if (!pgid) { this.notify('Нет PG ID', 'error'); return; }
+    let h = '<div style="display:flex;flex-direction:column;gap:8px;">';
+    for (const k in p) { if (k === '_pgid' || k === 'source' || k === 'type' || k === 'created') continue; h += '<div><label style="font-size:10px;color:var(--gray-t);">' + k + '</label><input class="dinput" style="margin-top:3px;" id="e_' + k + '" value="' + p[k] + '"></div>'; }
+    h += '</div>';
+    this.showModal('Обновить в PostgreSQL', h, '<button class="btn btn-s" onclick="App.hideModal()">Отмена</button><button class="btn btn-success" onclick="App.doUpdatePG(' + pgid + ')"><i class="fas fa-database"></i> Обновить</button>');
+  },
+  
+  async doUpdatePG(pgid) {
+    const f = Map.selectedFeature; if (!f) return; const newProps = {};
+    for (const k in f.properties) { if (k === '_pgid' || k === 'source') continue; const el = document.getElementById('e_' + k); newProps[k] = el ? el.value : f.properties[k]; }
+    newProps._pgid = pgid; newProps.source = 'postgresql';
+    await apiFetch(`/features/${pgid}`, { method: 'PUT', body: { properties: newProps } });
+    f.properties = newProps; this.hideModal(); this.showProps(f); this.notify('Обновлено в PostgreSQL', 'success');
+  },
+  
+  saveToPG() {
+    const f = Map.selectedFeature; if (!f) return; const g = f.geometry;
+    this.showModal('Сохранить в PostgreSQL', '<div style="display:flex;flex-direction:column;gap:8px;"><div><label style="font-size:10px;color:var(--gray-t);">Имя слоя</label><input class="dinput" style="margin-top:3px;" id="pgLayerName" value="exported_' + Date.now() + '"></div><div><label style="font-size:10px;color:var(--gray-t);">Тип геометрии</label><input class="dinput" style="margin-top:3px;" value="' + g.type + '" readonly></div></div>', '<button class="btn btn-s" onclick="App.hideModal()">Отмена</button><button class="btn btn-success" onclick="App.doSavePG()"><i class="fas fa-database"></i> Сохранить</button>');
+  },
+  
+  async doSavePG() {
+    const f = Map.selectedFeature; if (!f) return; const layerName = document.getElementById('pgLayerName').value; const g = f.geometry;
+    let geoType = g.type === 'LineString' ? 'Line' : g.type === 'Polygon' || g.type === 'MultiPolygon' ? 'Polygon' : 'Point';
+    let coords = g.type === 'Point' ? g.coordinates : g.type === 'LineString' ? g.coordinates : g.type === 'MultiPolygon' ? g.coordinates[0][0] : g.coordinates[0];
+    showLoading('Сохранение в PostgreSQL...');
+    const result = await insertFeatureToPG(layerName, geoType, coords, {...f.properties, source: 'postgresql'});
+    hideLoading();
+    if (result.success) { this.notify('Сохранено в PostgreSQL', 'success'); this.renderPostGISPanel(); } else { this.notify('Ошибка: ' + result.error, 'error'); }
+    this.hideModal();
+  },
+  
+  editFeature() {
+    const f = Map.selectedFeature; if (!f) return; const p = f.properties || {};
+    let h = '<div style="display:flex;flex-direction:column;gap:8px;">';
+    for (const k in p) { if (k === '_pgid' || k === 'source' || k === 'type' || k === 'created') continue; h += '<div><label style="font-size:10px;color:var(--gray-t);">' + k + '</label><input class="dinput" style="margin-top:3px;" id="e_' + k + '" value="' + p[k] + '"></div>'; }
+    h += '</div>';
+    this.showModal('Редактирование', h, '<button class="btn btn-s" onclick="App.hideModal()">Отмена</button><button class="btn btn-p" onclick="App.saveEdit()">Сохранить</button>');
+  },
+  
+  saveEdit() {
+    const f = Map.selectedFeature; if (!f) return;
+    for (const k in f.properties) { if (k === '_pgid' || k === 'source' || k === 'type' || k === 'created') continue; const el = document.getElementById('e_' + k); if (el) f.properties[k] = el.value; }
+    GISDB.update(Map.selectedLayerId || GISDB.order[0], {}); GISDB.save(); this.hideModal(); this.showProps(f); this.renderAttrTable(); Map.render(); this.notify('Сохранено', 'success');
+  },
+  
+  async delFeature() {
+    const f = Map.selectedFeature; if (!f) return; const isPG = f.properties.source === 'postgresql'; const pgid = f.properties._pgid;
+    if (isPG && pgid) { if (!confirm('Удалить из PostgreSQL?')) return; await deleteFeatureFromPG(pgid); this.notify('Удалено из PostgreSQL', 'success'); this.renderPostGISPanel(); }
+    const layer = GISDB.layers[Map.selectedLayerId];
+    if (layer) { layer.features = layer.features.filter(x => x.id !== f.id); GISDB.save(); }
+    this.deselectAll(); this.updateUI(); Map.render();
+  },
+  
+  zoomTo() {
+    const f = Map.selectedFeature; if (!f) return; const g = f.geometry;
+    if (g.type === 'Point') Map.center = {lat: g.coordinates[1], lng: g.coordinates[0]};
+    else if (g.type === 'LineString' || g.type === 'Polygon' || g.type === 'MultiPolygon') {
+      const coords = g.type === 'MultiPolygon' ? g.coordinates[0][0] : g.type === 'Polygon' ? g.coordinates[0] : g.coordinates;
+      let minLa=90,maxLa=-90,minLo=180,maxLo=-180;
+      for (const c of coords) { minLa=Math.min(minLa,c[1]);maxLa=Math.max(maxLa,c[1]);minLo=Math.min(minLo,c[0]);maxLo=Math.max(maxLo,c[0]); }
+      Map.center = {lat:(minLa+maxLa)/2,lng:(minLo+maxLo)/2};
+    }
+    Map.zoom = 12; Map.render();
+  },
+  
+  addPointFeature(lat, lng) { const feat = {type:'Feature',geometry:{type:'Point',coordinates:[lng,lat]},properties:{name:'Точка',type:'manual',created:new Date().toISOString()}}; this.addFeatureToLayer(feat, 'Point'); this.updateUI(); },
+  
+  addFeatureToLayer(feat, geoType) {
+    let target = null;
+    for (const id of GISDB.order) { const l = GISDB.get(id); if (l && l.type === geoType && l.name.startsWith('Пользовательские')) { target = l; break; } }
+    if (!target) { GISDB.add('Пользовательские', geoType, [feat], '#2b7de9'); } else { target.features.push(feat); GISDB.save(); }
+    this.notify('Объект добавлен', 'success');
+  },
+  
+  renderLayerList() {
+    const el = document.getElementById('lList'); let h = '';
+    for (const id of GISDB.order) { const l = GISDB.get(id); if (!l) continue; const srcBadge = l.source === 'postgresql' ? '<span class="lsrc pg">PG</span>' : ''; h += '<div class="litem' + (Map.selectedLayerId === id ? ' active' : '') + '" onclick="App.selLayer(\'' + id + '\')">' + '<input type="checkbox" ' + (l.visible ? 'checked' : '') + ' onclick="event.stopPropagation();App.toggleLayer(\'' + id + '\')">' + '<div class="lcolor" style="background:' + l.color + '"></div>' + '<span class="lname">' + l.name + ' ' + srcBadge + '</span>' + '<span class="lcount">' + l.features.length + '</span>' + '<div class="lbtns">' + '<button class="lbtn" onclick="event.stopPropagation();App.zoomToLayer(\'' + id + '\')" title="Приблизить"><i class="fas fa-magnifying-glass-plus"></i></button>' + '<button class="lbtn" onclick="event.stopPropagation();App.delLayer(\'' + id + '\')" title="Удалить"><i class="fas fa-trash-can"></i></button>' + '</div></div>'; }
+    el.innerHTML = h;
+  },
+  
+  selLayer(id) { Map.selectedLayerId = id; this.renderLayerList(); this.renderAttrTable(); },
+  
+  toggleLayer(id) { const l = GISDB.get(id); if (!l) return; l.visible = !l.visible; GISDB.save(); this.renderLayerList(); this.renderLegend(); Map.render(); this.updateUI(); },
+  
+  zoomToLayer(id) {
+    const l = GISDB.get(id); if (!l || !l.features.length) return; let minLa=90,maxLa=-90,minLo=180,maxLo=-180;
+    for (const f of l.features) { const g = f.geometry; const coords = g.type==='MultiPolygon'?g.coordinates[0][0]:g.type==='Polygon'?g.coordinates[0]:g.type==='LineString'?g.coordinates:[[g.coordinates[1],g.coordinates[0]]]; for (const c of coords) { minLa=Math.min(minLa,c[1]);maxLa=Math.max(maxLa,c[1]);minLo=Math.min(minLo,c[0]);maxLo=Math.max(maxLo,c[0]); } }
+    Map.center = {lat:(minLa+maxLa)/2,lng:(minLo+maxLo)/2}; Map.zoom = Math.min(14, Map.zoom+2); Map.render();
+  },
+  
+  async delLayer(id) {
+    if (!confirm('Удалить слой "' + GISDB.get(id).name + '"?')) return; const l = GISDB.get(id);
+    if (l && l.source === 'postgresql') { if (confirm('Удалить также из PostgreSQL?')) { const pgLayerName = l.name.replace('PG: ', ''); const pgResult = await apiFetch('/layers'); const pgL = pgResult.find(x => x.name === pgLayerName); if (pgL) { await deleteLayerFromPG(pgL.id); this.renderPostGISPanel(); } } }
+    GISDB.remove(id); this.updateUI(); Map.render(); this.notify('Слой удалён', 'success');
+  },
+  
+  renderAttrTable() {
+    const sel = document.getElementById('aSel'); const cur = sel.value; sel.innerHTML = '<option value="">Выберите слой</option>';
+    for (const id of GISDB.order) { const l = GISDB.get(id); if (l) sel.innerHTML += '<option value="' + id + '"' + (id === (cur || Map.selectedLayerId) ? ' selected' : '') + '>' + l.name + '</option>'; }
+    const lid = sel.value || Map.selectedLayerId; const l = GISDB.get(lid); const head = document.getElementById('aHead'); const body = document.getElementById('aBody');
+    if (!l || !l.features.length) { head.innerHTML = ''; body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--gray-t);padding:30px;">Нет данных</td></tr>'; return; }
+    const keys = new Set(); l.features.forEach(f => Object.keys(f.properties||{}).forEach(k => keys.add(k))); const ks = ['name', ...[...keys].filter(k => k !== 'name')];
+    head.innerHTML = '<tr>' + ks.map(k => '<th>' + k + '</th>').join('') + '</tr>';
+    body.innerHTML = l.features.map(f => { const s = Map.selectedFeature && Map.selectedFeature.id === f.id ? 'sel' : ''; return '<tr data-id="' + f.id + '" class="' + s + '" onclick="App.clickRow(\'' + f.id + '\')">' + ks.map(k => '<td>' + ((f.properties||{})[k] || '-') + '</td>').join('') + '</tr>'; }).join('');
+  },
+  
+  clickRow(id) { let f = null; for (const lid of GISDB.order) { const feats = GISDB.get(lid).features; const found = feats.find(x => x.id === id); if (found) { f = found; break; } } if (f) this.selectFeature(f, null); },
+  
+  renderLegend() { const el = document.getElementById('legCnt'); let h = ''; for (const id of GISDB.order) { const l = GISDB.get(id); if (l && l.visible) h += '<div class="legitem"><div class="legcolor" style="background:' + l.color + '"></div>' + l.name + '</div>'; } el.innerHTML = h || '<p style="font-size:11px;color:var(--gray-t);">Нет видимых слоёв</p>'; },
+  
+  populateSelects() {
+    for (const sid of ['qL','spL1','spL2']) { const el = document.getElementById(sid); if (!el) continue; const cur = el.value; el.innerHTML = '<option value="">Выберите слой</option>'; for (const id of GISDB.order) { const l = GISDB.get(id); if (l) el.innerHTML += '<option value="' + id + '">' + l.name + '</option>'; } if (cur) el.value = cur; }
+    const qL = document.getElementById('qL'); if (qL) qL.onchange = function() { const layer = GISDB.get(this.value); const fs = document.getElementById('qF'); fs.innerHTML = '<option>Поле</option>'; if (layer && layer.features.length) { const keys = new Set(); layer.features.forEach(f => Object.keys(f.properties||{}).forEach(k => keys.add(k))); keys.forEach(k => fs.innerHTML += '<option value="' + k + '">' + k + '</option>'); } };
+  },
+  
+  execQuery() {
+    const lid = document.getElementById('qL').value; const field = document.getElementById('qF').value; const op = document.getElementById('qOp').value; const val = document.getElementById('qV').value;
+    if (!lid || field === 'Поле') { this.notify('Выберите слой и поле', 'error'); return; }
+    const features = GISDB.get(lid).features;
+    const res = features.filter(f => { const fv = (f.properties||{})[field]; if (op === 'contains') return String(fv).toLowerCase().includes(val.toLowerCase()); if (op === '!=') return String(fv) !== val; if (['>','<'].includes(op)) return parseFloat(fv) + op + parseFloat(val); return String(fv) === val; });
+    const box = document.getElementById('qRes'); box.style.display = 'block'; box.innerHTML = '<p>Найдено: <span>' + res.length + '</span> из <span>' + features.length + '</span></p><div style="max-height:150px;overflow-y:auto;margin-top:6px;">' + res.map(f => '<p style="padding:2px 0;font-size:11px;">' + ((f.properties||{}).name || '—') + '</p>').join('') + '</div>'; this.notify('Найдено ' + res.length, 'success');
+  },
+  
+  execSpatial() {
+    const l1id = document.getElementById('spL1').value; const l2id = document.getElementById('spL2').value; const op = document.getElementById('spOp').value;
+    if (!l1id || !l2id) { this.notify('Выберите оба слоя', 'error'); return; }
+    const f1s = GISDB.get(l1id).features, f2s = GISDB.get(l2id).features; let res = [];
+    f1s.forEach(a => f2s.forEach(b => { try { let hit = false; if (op === 'intersects') hit = turf.booleanIntersects(turf.feature(a.geometry), turf.feature(b.geometry)); else if (op === 'contains') hit = turf.booleanContains(turf.feature(a.geometry), turf.feature(b.geometry)); if (hit) res.push({a: (a.properties||{}).name, b: (b.properties||{}).name}); } catch(e) {} }));
+    const box = document.getElementById('spRes'); box.style.display = 'block'; box.innerHTML = '<p>Результат: <span>' + res.length + '</span> пересечений</p><div style="max-height:120px;overflow-y:auto;margin-top:6px;">' + res.map(r => '<p style="padding:2px 0;font-size:11px;">' + r.a + ' ↔ ' + r.b + '</p>').join('') + '</div>'; this.notify(res.length + ' пересечений', 'success');
+  },
+  
+  showCtx(x, y) { const m = document.getElementById('ctx'); m.style.left = x + 'px'; m.style.top = y + 'px'; m.classList.add('show'); },
+  hideCtx() { document.getElementById('ctx').classList.remove('show'); },
+  
+  showModal(title, body, footer) { 
+    document.getElementById('mTitle').textContent = title; 
+    document.getElementById('mBody').innerHTML = body; 
+    document.getElementById('mFoot').innerHTML = footer || ''; 
+    document.getElementById('mOv').classList.add('show'); 
+  },
+  hideModal() { document.getElementById('mOv').classList.remove('show'); },
+  
+  notify(msg, type = 'success') { 
+    const el = document.getElementById('notif'); 
+    el.innerHTML = (type === 'success' ? '<i class="fas fa-check-circle" style="color:var(--green)"></i>' : '<i class="fas fa-exclamation-circle" style="color:var(--red)"></i>') + ' ' + msg; 
+    el.className = 'notif ' + type; 
+    setTimeout(() => el.classList.add('show'), 10); 
+    setTimeout(() => el.classList.remove('show'), 3000); 
+  },
+  
+  async renderPostGISPanel() {
+    if (!Auth.isAuthenticated()) return;
+    
+    const panel = document.getElementById('pgPanel'); if (!pgReady) { panel.innerHTML = pgError ? '<div class="pg-status error"><i class="fas fa-circle-xmark"></i> Ошибка: ' + pgError + '</div>' : '<div class="pg-status init"><i class="fas fa-spinner fa-spin"></i> Подключение...</div>'; return; }
+    const stats = await getPGStats(); const tables = await getPGTables(); let tablesHtml = '';
+    for (const t of tables) { const typeIcon = t.layer_type === 'Point' ? 'fa-location-dot' : t.layer_type === 'LineString' ? 'fa-route' : 'fa-vector-square'; tablesHtml += '<div class="pg-table-item"><div class="pg-t-icon"><i class="fas ' + typeIcon + '"></i></div><div class="pg-t-info"><div class="pg-t-name">' + t.name + '</div><div class="pg-t-meta">' + t.layer_type + ' · ' + parseInt(t.feature_count).toLocaleString() + ' объектов</div></div><div class="pg-t-actions"><button class="btn btn-p btn-sm" onclick="App.loadPGFromDB(' + t.id + ',\'' + t.name + '\',\'' + t.layer_type + '\',\'' + t.color + '\')" title="Загрузить на карту"><i class="fas fa-download"></i></button><button class="btn btn-d btn-sm" onclick="App.delPGTable(' + t.id + ',\'' + t.name + '\')" title="Удалить из БД"><i class="fas fa-trash-can"></i></button></div></div>'; }
+    panel.innerHTML = '<h4><i class="fas fa-database"></i> PostgreSQL + PostGIS</h4><div class="pg-status connected"><i class="fas fa-circle-check"></i> PostgreSQL (удалённая БД)</div><div class="pg-info-grid"><div class="pg-info-card"><div class="pg-ic-value">' + (stats ? stats.layers : 0) + '</div><div class="pg-ic-label">Слоёв в БД</div></div><div class="pg-info-card"><div class="pg-ic-value">' + (stats ? stats.features.toLocaleString() : 0) + '</div><div class="pg-ic-label">Объектов в БД</div></div></div><h4 style="margin-top:8px;"><i class="fas fa-table"></i> Слои в БД</h4><div class="pg-tables">' + (tablesHtml || '<p style="color:var(--gray-t);font-size:12px;padding:12px;">Нет слоёв в БД</p>') + '</div><div style="margin-top:14px;display:flex;gap:6px;flex-wrap:wrap;"><button class="btn btn-s btn-sm" onclick="App.exportToPG()"><i class="fas fa-upload"></i> Экспорт в БД</button><button class="btn btn-s btn-sm" onclick="App.refreshFromPG()"><i class="fas fa-rotate"></i> Обновить</button><button class="btn btn-s btn-sm" onclick="App.runPGSQLModal()"><i class="fas fa-terminal"></i> SQL</button></div>';
+  },
+  
+  async loadPGFromDB(layerId, name, layerType, color) { const geoType = layerType === 'LINESTRING' ? 'Line' : layerType === 'POLYGON' || layerType === 'MULTIPOLYGON' ? 'Polygon' : 'Point'; await loadLayerFromPG(layerId, name, geoType, color); },
+  
+  async delPGTable(layerId, name) { if (!confirm('Удалить "' + name + '" из PostgreSQL?')) return; showLoading('Удаление из PostgreSQL...'); await deleteLayerFromPG(layerId); hideLoading(); this.renderPostGISPanel(); this.notify('Удалено из PostgreSQL', 'success'); },
+  
+  async exportToPG() {
+    const lid = Map.selectedLayerId || GISDB.order[0]; if (!lid) { this.notify('Нет слоёв для экспорта', 'error'); return; }
+    const layer = GISDB.get(lid); showLoading('Экспорт ' + layer.features.length + ' объектов в PostgreSQL...');
+    let geoType = layer.type === 'Line' ? 'Line' : layer.type === 'Polygon' ? 'Polygon' : 'Point';
+    for (const f of layer.features) { const g = f.geometry; let coords = g.type==='Point'?g.coordinates:g.type==='LineString'?g.coordinates:g.type==='MultiPolygon'?g.coordinates[0][0]:g.coordinates[0]; await insertFeatureToPG(layer.name, geoType, coords, {...f.properties, source:'postgresql'}); }
+    hideLoading(); this.renderPostGISPanel(); this.notify('Экспортировано ' + layer.features.length + ' объектов', 'success');
+  },
+  
+  async refreshFromPG() { showLoading('Обновление из PostgreSQL...'); await getPGTables(); hideLoading(); this.renderPostGISPanel(); this.notify('Обновлено', 'success'); },
+  
+  runPGSQLModal() { this.showModal('PostgreSQL SQL — Выполнение запросов', '<div style="margin-bottom:8px;display:flex;gap:6px;"><button class="btn btn-s btn-sm" onclick="App.pgSQLTemplates()"><i class="fas fa-file-code"></i> Шаблоны</button><button class="btn btn-s btn-sm" onclick="App.pgSQLHelp()"><i class="fas fa-circle-question"></i> Справка</button></div><textarea class="pg-sql-area" id="pgSQLArea" spellcheck="false" placeholder="-- Введите SQL запрос\nSELECT l.name, COUNT(f.id) as cnt\nFROM gis_layers l\nLEFT JOIN gis_features f ON l.id = f.layer_id\nGROUP BY l.id, l.name;"></textarea><div style="margin-top:8px;display:flex;gap:6px;"><button class="btn btn-p btn-sm" onclick="App.runPGSQL()"><i class="fas fa-play"></i> Выполнить</button></div><div class="pg-sql-result" id="pgSQLRes"></div>', ''); },
+  
+  async runPGSQL() {
+    const sql = document.getElementById('pgSQLArea').value.trim(); const resEl = document.getElementById('pgSQLRes');
+    if (!sql) { this.notify('Введите SQL запрос', 'error'); return; }
+    showLoading('Выполнение...'); const result = await executePGSQL(sql); hideLoading();
+    let h = '';
+    if (result.error) { h = '<p class="pg-sql-status" style="color:var(--red);">Ошибка: ' + result.error + '</p>'; }
+    else if (result.results) { for (const r of result.results) { if (r.command === 'SELECT') { h += '<table><thead><tr>' + r.fields.map(c => '<th>' + c.name + '</th>').join('') + '</tr></thead><tbody>'; for (const row of r.rows) { h += '<tr>' + r.fields.map(c => { const val = row[c.name]; return '<td title="' + (val !== null ? String(val).slice(0,100) : 'NULL') + '">' + (val !== null ? String(val).slice(0,50) : 'NULL') + '</td>'; }).join('') + '</tr>'; } h += '</tbody></table><p class="pg-sql-status">Выбрано строк: ' + r.rows.length + '</p>'; } else { h += '<p class="pg-sql-status" style="color:var(--green);">Команда выполнена: ' + r.command + ' (' + r.rowCount + ' строк)</p>'; } } }
+    resEl.innerHTML = h;
+  },
+  
+  pgSQLHelp() { const sqlArea = document.getElementById('pgSQLArea'); if (!sqlArea) return; sqlArea.value = `-- Справка по таблицам PostgreSQL\n-- gis_layers: id, name, layer_type, color, source, created_at\n-- gis_features: id, layer_id, geom (GEOMETRY), properties (JSONB), created_at\n\n-- Все слои:\nSELECT * FROM gis_layers;\n\n-- Объекты слоя с геометрией:\nSELECT f.id, f.properties, ST_AsText(f.geom) as geom_text\nFROM gis_features f\nJOIN gis_layers l ON f.layer_id = l.id\nWHERE l.name = 'Города России';\n\n-- Статистика:\nSELECT l.name, l.layer_type, COUNT(f.id) as features\nFROM gis_layers l\nLEFT JOIN gis_features f ON l.id = f.layer_id\nGROUP BY l.id, l.name, l.layer_type;`; },
+  
+  pgSQLTemplates() { const sqlArea = document.getElementById('pgSQLArea'); if (!sqlArea) return; sqlArea.value = `-- Шаблон: полная статистика по слоям\nSELECT l.name AS "Слой", l.layer_type AS "Тип", l.color AS "Цвет", COUNT(f.id) AS "Объектов" FROM gis_layers l LEFT JOIN gis_features f ON l.id = f.layer_id GROUP BY l.id, l.name, l.layer_type, l.color ORDER BY l.id;`; },
+  
+  bindUI() {
+    // === AUTH UI BINDINGS ===
+    document.getElementById('authForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const login = document.getElementById('authLogin').value.trim();
+      const password = document.getElementById('authPassword').value;
+      const remember = document.getElementById('authRemember').checked;
+      const btn = document.getElementById('authBtn');
+      const error = document.getElementById('authError');
+      
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Вход...';
+      error.classList.remove('show');
+      
+      const result = await Auth.login(login, password, remember);
+      
+      if (result.success) {
+        App.notify('Добро пожаловать!', 'success');
+      } else {
+        error.classList.add('show');
+        document.getElementById('authErrorMsg').textContent = result.error || 'Ошибка авторизации';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-right-to-bracket"></i> <span>Войти</span>';
+      }
+    });
+    
+    document.getElementById('togglePassword').addEventListener('click', function() {
+      const pwd = document.getElementById('authPassword');
+      const icon = this.querySelector('i');
+      if (pwd.type === 'password') {
+        pwd.type = 'text';
+        icon.classList.replace('fa-eye', 'fa-eye-slash');
+      } else {
+        pwd.type = 'password';
+        icon.classList.replace('fa-eye-slash', 'fa-eye');
+      }
+    });
+    
+    document.getElementById('forgotLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      App.notify('Обратитесь к администратору для восстановления пароля', 'error');
+    });
+    
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      if (confirm('Вы действительно хотите выйти?')) {
+        Auth.logout();
+      }
+    });
+    
+    // === EXISTING UI BINDINGS ===
+    document.querySelectorAll('.tbtn').forEach(btn => { btn.onclick = () => { document.querySelectorAll('.tbtn').forEach(b => b.classList.remove('on')); document.querySelectorAll('.tcontent').forEach(c => c.classList.remove('on')); btn.classList.add('on'); document.getElementById('t-' + btn.dataset.t).classList.add('on'); }; });
+    document.getElementById('bLayers').onclick = () => { document.getElementById('sLeft').classList.toggle('collapsed'); document.getElementById('bLayers').classList.toggle('on'); setTimeout(() => Map.resize(), 350); };
+    document.getElementById('bProps').onclick = () => { document.getElementById('sRight').classList.toggle('collapsed'); document.getElementById('bProps').classList.toggle('on'); setTimeout(() => Map.resize(), 350); };
+    document.getElementById('bZI').onclick = () => { Map.zoom = Math.min(18, Map.zoom+1); Map.render(); this.updateUI(); };
+    document.getElementById('bZO').onclick = () => { Map.zoom = Math.max(2, Map.zoom-1); Map.render(); this.updateUI(); };
+    document.getElementById('bZoomFull').onclick = () => { let minLa=90,maxLa=-90,minLo=180,maxLo=-180; for (const l of GISDB.visible()) { for (const f of l.features) { const g = f.geometry; const coords = g.type==='MultiPolygon'?g.coordinates[0][0]:g.type==='Polygon'?g.coordinates[0]:g.type==='LineString'?g.coordinates:[[g.coordinates[1],g.coordinates[0]]]; for (const c of coords) { minLa=Math.min(minLa,c[1]);maxLa=Math.max(maxLa,c[1]);minLo=Math.min(minLo,c[0]);maxLo=Math.max(maxLo,c[0]); } } } Map.center = {lat:(minLa+maxLa)/2,lng:(minLo+maxLo)/2}; Map.render(); };
+    document.getElementById('bZoomSel').onclick = () => this.zoomTo();
+    document.getElementById('bAddLayer').onclick = () => { this.showModal('Новый слой', '<div style="display:flex;flex-direction:column;gap:8px;"><div><label style="font-size:10px;color:var(--gray-t);">Название</label><input class="dinput" style="margin-top:3px;" id="nln" placeholder="Название"></div><div><label style="font-size:10px;color:var(--gray-t);">Тип</label><select class="dinput" style="margin-top:3px;" id="nlt"><option value="Point">Точка</option><option value="Line">Линия</option><option value="Polygon">Полигон</option></select></div><div><label style="font-size:10px;color:var(--gray-t);">Цвет</label><input type="color" id="nlc" value="#2b7de9" style="margin-top:3px;width:50px;height:28px;border:none;border-radius:4px;cursor:pointer;"></div></div>', '<button class="btn btn-s" onclick="App.hideModal()">Отмена</button><button class="btn btn-p" onclick="App.createLayer()">Создать</button>'); };
+    document.getElementById('bDelLayer').onclick = () => { if (!Map.selectedLayerId) { this.notify('Выберите слой', 'error'); return; } this.delLayer(Map.selectedLayerId); };
+    document.getElementById('bImport').onclick = () => { this.showModal('Импорт GeoJSON', '<div class="importz" id="impZ"><i class="fas fa-cloud-arrow-up"></i><p>Нажмите или перетащите GeoJSON</p></div><input type="file" id="fileIn" accept=".geojson,.json" style="display:none;" onchange="App.handleImport(this)"><input class="dinput" id="impName" placeholder="Название слоя" style="margin-top:10px;">', ''); setTimeout(() => { const z = document.getElementById('impZ'); if (!z) return; z.onclick = () => document.getElementById('fileIn').click(); z.ondragover = e => { e.preventDefault(); z.style.borderColor = 'var(--blue)'; }; z.ondragleave = () => { z.style.borderColor = ''; }; z.ondrop = e => { e.preventDefault(); z.style.borderColor = ''; const f = e.dataTransfer.files[0]; if (f) this.processImport(f); }; }, 50); };
+    document.getElementById('bExport').onclick = () => { const lid = Map.selectedLayerId || (GISDB.order[0] || null); if (!lid) { this.notify('Нет слоёв', 'error'); return; } const l = GISDB.get(lid); const geo = {type: 'FeatureCollection', features: l.features}; const blob = new Blob([JSON.stringify(geo, null, 2)], {type: 'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = l.name + '.geojson'; a.click(); this.notify('Экспорт завершён', 'success'); };
+    document.getElementById('bDrawPt').onclick = () => { Map.drawMode = 'point'; document.getElementById('drawInd').classList.add('show'); document.getElementById('drawLbl').textContent = 'Кликните для добавления точки'; };
+    document.getElementById('bDrawLn').onclick = () => { Map.drawMode = 'line'; Map.drawPoints = []; document.getElementById('drawInd').classList.add('show'); document.getElementById('drawLbl').textContent = 'Кликните — точки, dblclick — завершить'; };
+    document.getElementById('bDrawPl').onclick = () => { Map.drawMode = 'poly'; Map.drawPoints = []; document.getElementById('drawInd').classList.add('show'); document.getElementById('drawLbl').textContent = 'Кликните — точки, dblclick — завершить'; };
+    document.getElementById('bCancelDraw').onclick = () => { Map.drawMode = null; Map.drawPoints = []; Map.drawMouseLat = null; Map.drawMouseLng = null; document.getElementById('drawInd').classList.remove('show'); Map.render(); };
+    document.getElementById('bBuffer').onclick = () => { if (!Map.selectedFeature) { this.notify('Выберите объект', 'error'); return; } this.showModal('Буферная зона', '<div style="display:flex;flex-direction:column;gap:8px;"><label style="font-size:10px;color:var(--gray-t);">Радиус (км)</label><input type="number" class="dinput" id="bufR" value="10" min="0.1" step="0.1"><div class="strow"><label>Цвет</label><input type="color" id="bufC" value="#2b7de9"></div></div>', '<button class="btn btn-s" onclick="App.hideModal()">Отмена</button><button class="btn btn-p" onclick="App.createBuffer()">Создать</button>'); };
+    document.getElementById('bIntersect').onclick = () => { const layers = GISDB.order.map(id => { const l = GISDB.get(id); return '<option value="' + id + '">' + l.name + '</option>'; }).join(''); this.showModal('Пересечение слоёв', '<div class="qrow"><select id="iL1" style="flex:1;background:var(--gray);border:1px solid var(--border);color:#333;padding:7px;border-radius:var(--r);font-size:11px;">' + layers + '</select><span style="color:var(--gray-t);padding:0 6px;font-size:16px;">∩</span><select id="iL2" style="flex:1;background:var(--gray);border:1px solid var(--border);color:#333;padding:7px;border-radius:var(--r);font-size:11px;">' + layers + '</select></div>', '<button class="btn btn-s" onclick="App.hideModal()">Отмена</button><button class="btn btn-p" onclick="App.runIntersect()">Вычислить</button>'); };
+    document.getElementById('bPG').onclick = () => { document.querySelectorAll('.tbtn').forEach(b => b.classList.remove('on')); document.querySelectorAll('.tcontent').forEach(c => c.classList.remove('on')); document.querySelector('[data-t="postgis"]').classList.add('on'); document.getElementById('t-postgis').classList.add('on'); this.renderPostGISPanel(); };
+    document.getElementById('bPGSQL').onclick = () => { this.runPGSQLModal(); };
+    document.getElementById('bRefreshDB').onclick = () => { this.renderPostGISPanel(); };
+    document.getElementById('bStyle').onclick = () => { if (!Map.selectedLayerId) { this.notify('Выберите слой', 'error'); return; } const l = GISDB.get(Map.selectedLayerId); this.showModal('Стиль слоя', '<div class="strow"><label>Цвет</label><input type="color" id="stC" value="' + l.color + '"></div><div class="strow"><label>Прозрачность</label><input type="range" id="stO" min="0" max="1" step="0.1" value="' + l.opacity + '"></div>', '<button class="btn btn-s" onclick="App.hideModal()">Отмена</button><button class="btn btn-p" onclick="App.applyStyle()">Применить</button>'); };
+    document.getElementById('xCtxPt').onclick = () => { Map.hideCtx(); this.addPointFeature(Map.ctxLatLng.lat, Map.ctxLatLng.lng); this.updateUI(); };
+    document.getElementById('xSavePG').onclick = () => { Map.hideCtx(); if (Map.selectedFeature) this.saveToPG(); else this.notify('Выберите объект', 'error'); };
+    document.getElementById('xCtr').onclick = () => { Map.hideCtx(); Map.center = {lat: Map.ctxLatLng.lat, lng: Map.ctxLatLng.lng}; Map.render(); };
+    document.getElementById('xCop').onclick = () => { Map.hideCtx(); const c = Map.ctxLatLng.lat.toFixed(6) + ', ' + Map.ctxLatLng.lng.toFixed(6); navigator.clipboard.writeText(c).then(() => this.notify('Скопировано', 'success')); };
+    document.getElementById('xDel').onclick = () => { Map.hideCtx(); this.delFeature(); };
+    document.getElementById('xProp').onclick = () => { Map.hideCtx(); document.getElementById('bProps').click(); };
+    document.getElementById('mCls').onclick = () => this.hideModal();
+    document.getElementById('mOv').onclick = e => { if (e.target === e.currentTarget) this.hideModal(); };
+    document.getElementById('searchIn').onkeydown = e => { if (e.key === 'Enter') this.search(); };
+    document.getElementById('aSel').onchange = () => this.renderAttrTable();
+    document.getElementById('bExpTbl').onclick = () => document.getElementById('bExport').click();
+    document.getElementById('bExecQ').onclick = () => this.execQuery();
+    document.getElementById('bClearQ').onclick = () => { document.getElementById('qV').value = ''; document.getElementById('qRes').style.display = 'none'; };
+    document.getElementById('bSpQ').onclick = () => this.execSpatial();
+    document.getElementById('bMeasure').onclick = function() { Map.measureMode = !Map.measureMode; Map.measurePoints = []; this.classList.toggle('on', Map.measureMode); if (Map.measureMode) App.notify('Кликайте для измерения', 'success'); Map.render(); };
+    document.getElementById('bBase').onclick = () => { Map.basemap = (Map.basemap + 1) % Map.basemaps.length; Map.tiles = {}; Map.render(); this.notify('Подложка: ' + Map.basemaps[Map.basemap].name, 'success'); };
+    document.getElementById('bLoc').onclick = () => { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition(p => { Map.center = {lat: p.coords.latitude, lng: p.coords.longitude}; Map.zoom = 14; Map.render(); App.notify('Местоположение найдено', 'success'); }, () => App.notify('Не удалось определить', 'error')); } };
+  },
+  
+  createLayer() { const name = document.getElementById('nln').value || 'Новый слой'; const type = document.getElementById('nlt').value; const color = document.getElementById('nlc').value; GISDB.add(name, type, [], color); this.hideModal(); this.updateUI(); Map.render(); this.notify('Слой "' + name + '" создан', 'success'); },
+  
+  handleImport(input) { const f = input.files[0]; if (f) this.processImport(f); },
+  
+  processImport(file) { const reader = new FileReader(); reader.onload = e => { try { const geo = JSON.parse(e.target.result); const name = document.getElementById('impName')?.value || file.name.replace(/\.[^.]+$/, ''); let type = 'Point'; if (geo.features && geo.features.length) type = geo.features[0].geometry?.type || 'Point'; if (type === 'LineString') type = 'Line'; const features = (geo.features || []).map(f => ({...f, id: f.id || 'f_' + Date.now() + '_' + Math.random().toString(36).substr(2,5)})); GISDB.add(name, type, features, '#2e7d32'); this.hideModal(); this.updateUI(); Map.render(); this.notify('Импортировано ' + features.length + ' объектов', 'success'); } catch (err) { this.notify('Ошибка: ' + err.message, 'error'); } }; reader.readAsText(file); },
+  
+  createBuffer() { const r = parseFloat(document.getElementById('bufR').value); const c = document.getElementById('bufC').value; const f = Map.selectedFeature; try { const buf = turf.buffer(turf.feature(f.geometry), r, {units: 'kilometers'}); const feat = {type: 'Feature', geometry: buf.geometry, properties: {name: 'Буфер ' + r + 'км', radius: r}}; GISDB.add('Буфер ' + r + 'км', 'Polygon', [feat], c); this.hideModal(); this.updateUI(); Map.render(); this.notify('Буфер создан', 'success'); } catch (e) { this.notify('Ошибка: ' + e.message, 'error'); } },
+  
+  runIntersect() { const l1 = GISDB.get(document.getElementById('iL1').value); const l2 = GISDB.get(document.getElementById('iL2').value); if (!l1 || !l2) { this.notify('Выберите оба слоя', 'error'); return; } const res = []; l1.features.forEach(a => { if (a.geometry.type !== 'Polygon') return; l2.features.forEach(b => { if (b.geometry.type !== 'Polygon') return; try { const i = turf.intersect(turf.feature(a.geometry), turf.feature(b.geometry)); if (i) res.push(i); } catch(e) {} }); }); if (res.length) { GISDB.add('Пересечение', 'Polygon', res, '#e53935'); this.hideModal(); this.updateUI(); Map.render(); this.notify(res.length + ' пересечений', 'success'); } else { this.hideModal(); this.notify('Пересечений не найдено', 'error'); } },
+  
+  applyStyle() { const l = GISDB.get(Map.selectedLayerId); if (!l) return; l.color = document.getElementById('stC').value; l.opacity = parseFloat(document.getElementById('stO').value); GISDB.save(); this.hideModal(); this.renderLayerList(); this.renderLegend(); Map.render(); this.notify('Стиль применён', 'success'); },
+  
+  search() { const q = document.getElementById('searchIn').value.toLowerCase().trim(); if (!q) return; let f = null; for (const id of GISDB.order) { const feats = GISDB.get(id).features; for (const feat of feats) { if ((feat.properties.name || '').toLowerCase().includes(q)) { f = feat; break; } } if (f) break; } if (f) { this.selectFeature(f, null); this.zoomTo(); this.notify('Найдено: ' + f.properties.name, 'success'); } else this.notify('Не найдено', 'error'); }
+};
+
+// ==================== INIT ====================
+document.addEventListener('DOMContentLoaded', () => {
+  App.init();
+});
+</script>
+</body>
+</html>
