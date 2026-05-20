@@ -1,0 +1,3547 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GeoWeb Pro — GeoGIS Platform</title>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Leaflet Draw -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+<!-- Turf.js -->
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+<!-- Proj4js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.2/proj4.js"></script>
+
+<!-- FileSaver -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<!-- Font Awesome -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+<style>
+:root {
+  --bg-dark: #1a1a2e;
+  --bg-panel: #16213e;
+  --bg-card: #0f3460;
+  --accent: #e94560;
+  --accent2: #533483;
+  --text: #eee;
+  --text-dim: #aab;
+  --border: #2a2a4a;
+  --success: #00b894;
+  --warning: #fdcb6e;
+  --info: #74b9ff;
+  --danger: #d63031;
+  --radius: 8px;
+  --shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg-dark);
+  color: var(--text);
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ========== AUTH SCREEN ========== */
+#authScreen {
+  position: fixed; inset:0; z-index:10000;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.auth-container {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 40px;
+  width: 420px;
+  box-shadow: var(--shadow);
+}
+
+.auth-logo {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.auth-logo i {
+  font-size: 48px;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+.auth-logo h1 {
+  font-size: 28px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.auth-logo p { color: var(--text-dim); margin-top: 5px; }
+
+.auth-tabs {
+  display: flex;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 25px;
+}
+
+.auth-tab {
+  flex:1; padding: 12px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--text-dim);
+  transition: all 0.3s;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+}
+
+.auth-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.auth-form { display: none; }
+.auth-form.active { display: block; }
+
+.form-group {
+  margin-bottom: 18px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 14px;
+  transition: border-color 0.3s;
+}
+
+.form-group input:focus, .form-group select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white;
+  width: 100%;
+  justify-content: center;
+}
+
+.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn-success { background: var(--success); color: white; }
+.btn-danger { background: var(--danger); color: white; }
+.btn-info { background: var(--info); color: white; }
+.btn-warning { background: var(--warning); color: #333; }
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+.auth-error {
+  background: rgba(214,48,49,0.2);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  padding: 10px;
+  border-radius: var(--radius);
+  margin-bottom: 15px;
+  display: none;
+  font-size: 13px;
+}
+
+/* ========== MAIN APP ========== */
+#appScreen { display: none; height: 100vh; }
+
+/* Top Bar */
+.topbar {
+  height: 48px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 15px;
+  gap: 15px;
+  z-index: 1000;
+  position: relative;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.topbar-brand i { color: var(--accent); }
+
+.topbar-menu {
+  display: flex;
+  gap: 2px;
+  margin-left: 20px;
+}
+
+.menu-item {
+  padding: 8px 14px;
+  cursor: pointer;
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: var(--text-dim);
+  transition: all 0.2s;
+  position: relative;
+}
+
+.menu-item:hover { background: var(--bg-card); color: var(--text); }
+
+.menu-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 220px;
+  box-shadow: var(--shadow);
+  z-index: 2000;
+  padding: 5px 0;
+}
+
+.menu-item:hover .menu-dropdown { display: block; }
+
+.menu-dropdown-item {
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background 0.2s;
+}
+
+.menu-dropdown-item:hover { background: var(--bg-card); }
+.menu-dropdown-item i { width: 16px; text-align: center; color: var(--accent); }
+.menu-separator { height: 1px; background: var(--border); margin: 5px 0; }
+
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-card);
+  border-radius: 20px;
+  font-size: 13px;
+}
+
+.user-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Main Layout */
+.main-layout {
+  display: flex;
+  height: calc(100vh - 48px);
+}
+
+/* Left Panel */
+.left-panel {
+  width: 320px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.3s;
+}
+
+.left-panel.collapsed { width: 0; border: none; }
+
+.panel-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.panel-tab {
+  flex: 1;
+  padding: 12px 8px;
+  text-align: center;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-dim);
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.panel-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.panel-tab i { display: block; font-size: 16px; margin-bottom: 4px; }
+
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.panel-content::-webkit-scrollbar { width: 6px; }
+.panel-content::-webkit-scrollbar-track { background: transparent; }
+.panel-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.panel-section { display: none; }
+.panel-section.active { display: block; }
+
+/* Layers */
+.layer-item {
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  margin-bottom: 8px;
+  transition: border-color 0.2s;
+}
+
+.layer-item:hover { border-color: var(--accent); }
+
+.layer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.layer-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 2px solid rgba(255,255,255,0.3);
+  flex-shrink: 0;
+}
+
+.layer-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.layer-actions button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.layer-actions button:hover { color: var(--text); background: var(--bg-card); }
+
+.layer-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* Map Area */
+.map-area {
+  flex: 1;
+  position: relative;
+}
+
+#map { width: 100%; height: 100%; }
+
+/* Coordinate Display */
+.coord-display {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(22,33,62,0.9);
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-family: monospace;
+  z-index: 800;
+  backdrop-filter: blur(10px);
+}
+
+/* Scale Bar */
+.scale-info {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(22,33,62,0.9);
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  z-index: 800;
+  backdrop-filter: blur(10px);
+}
+
+/* Right Panel */
+.right-panel {
+  width: 350px;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.3s;
+}
+
+.right-panel.collapsed { width: 0; border: none; }
+
+/* Attribute Table */
+.attr-table-container {
+  flex: 1;
+  overflow: auto;
+}
+
+.attr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.attr-table th {
+  background: var(--bg-card);
+  padding: 8px 10px;
+  text-align: left;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 2px solid var(--accent);
+}
+
+.attr-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attr-table tr:hover td { background: var(--bg-card); }
+.attr-table tr.selected td { background: rgba(233,69,96,0.2); }
+
+/* Bottom Panel */
+.bottom-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 0;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  transition: height 0.3s;
+  overflow: hidden;
+  z-index: 900;
+}
+
+.bottom-panel.open { height: 250px; }
+
+.bottom-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+
+.bottom-header span { flex:1; font-size: 13px; font-weight: 600; }
+
+.bottom-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 5000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.modal-overlay.active { display: flex; }
+
+.modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 600px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow: auto;
+  box-shadow: var(--shadow);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h3 { flex:1; font-size: 16px; }
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.modal-body { padding: 20px; }
+.modal-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Style Controls */
+.style-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.style-row label {
+  width: 100px;
+  font-size: 13px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.style-row input[type="color"] {
+  width: 40px;
+  height: 30px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.style-row input[type="range"] {
+  flex: 1;
+}
+
+.style-row input[type="number"] {
+  width: 70px;
+  padding: 6px;
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+}
+
+.style-row select {
+  flex: 1;
+  padding: 6px;
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+}
+
+/* Analysis Panel */
+.analysis-card {
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+
+.analysis-card h4 {
+  font-size: 13px;
+  margin-bottom: 10px;
+  color: var(--accent);
+}
+
+/* Toast */
+.toast-container {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toast {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 20px;
+  font-size: 13px;
+  box-shadow: var(--shadow);
+  animation: slideIn 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 250px;
+}
+
+.toast.success { border-left: 4px solid var(--success); }
+.toast.error { border-left: 4px solid var(--danger); }
+.toast.info { border-left: 4px solid var(--info); }
+.toast.warning { border-left: 4px solid var(--warning); }
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Search */
+.search-box {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.search-box input {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.search-box input:focus { outline: none; border-color: var(--accent); }
+
+/* Feature info popup */
+.feature-popup {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.feature-popup table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.feature-popup td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.feature-popup td:first-child {
+  color: var(--text-dim);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Print */
+.print-area { display: none; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .left-panel, .right-panel { display: none; }
+}
+
+/* Toggle panels */
+.panel-toggle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 900;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 4px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+.panel-toggle:hover { color: var(--accent); }
+.toggle-left { left: 0; }
+.toggle-right { right: 0; }
+
+/* GeoJSON textarea */
+.geojson-input {
+  width: 100%;
+  height: 150px;
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: monospace;
+  font-size: 12px;
+  padding: 10px;
+  resize: vertical;
+}
+
+.geojson-input:focus { outline: none; border-color: var(--accent); }
+
+/* CRS selector */
+.crs-info {
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+/* Measure result */
+.measure-result {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-top: 10px;
+  font-family: monospace;
+  font-size: 14px;
+}
+
+/* Print styles */
+@media print {
+  .topbar, .left-panel, .right-panel, .panel-toggle,
+  .coord-display, .scale-info, .toast-container { display: none !important; }
+  .main-layout { height: 100vh; }
+  .map-area { position: absolute; inset: 0; }
+}
+
+/* Loading spinner */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Tab content panels */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Checkbox toggle */
+.toggle-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+}
+
+.toggle-switch input { display: none; }
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  top: 2px;
+  background: white;
+  border-radius: 50%;
+  transition: 0.3s;
+}
+
+.toggle-switch input:checked + .toggle-slider { background: var(--accent); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+/* Quick actions bar */
+.quick-actions {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(22,33,62,0.95);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px;
+  display: flex;
+  gap: 4px;
+  z-index: 800;
+  backdrop-filter: blur(10px);
+}
+
+.quick-action-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-action-btn:hover { background: var(--bg-card); color: var(--text); }
+.quick-action-btn.active { background: var(--accent); color: white; }
+
+/* Bookmark */
+.bookmark-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg-dark);
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.bookmark-item:hover { background: var(--bg-card); }
+
+/* Heatmap gradient */
+.gradient-bar {
+  height: 20px;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+</style>
+</head>
+<body>
+
+<!-- ========== AUTH SCREEN ========== -->
+<div id="authScreen">
+  <div class="auth-container">
+    <div class="auth-logo">
+      <i class="fas fa-globe-americas"></i>
+      <h1>GeoWeb Pro</h1>
+      <p>Геоинформационная платформа</p>
+    </div>
+
+    <div class="auth-tabs">
+      <div class="auth-tab active" onclick="switchAuthTab('login')">
+        <i class="fas fa-sign-in-alt"></i> Вход
+      </div>
+      <div class="auth-tab" onclick="switchAuthTab('register')">
+        <i class="fas fa-user-plus"></i> Регистрация
+      </div>
+    </div>
+
+    <div id="authError" class="auth-error"></div>
+
+    <form id="loginForm" class="auth-form active" onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="user@example.com" required>
+      </div>
+      <div class="form-group">
+        <label>Пароль</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" required>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="rememberMe">
+        <label for="rememberMe" style="margin:0">Запомнить меня</label>
+      </div>
+      <button type="submit" class="btn btn-primary">
+        <i class="fas fa-sign-in-alt"></i> Войти
+      </button>
+    </form>
+
+    <form id="registerForm" class="auth-form" onsubmit="handleRegister(event)">
+      <div class="form-group">
+        <label>Имя</label>
+        <input type="text" id="regName" placeholder="Иван Иванов" required>
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="regEmail" placeholder="user@example.com" required>
+      </div>
+      <div class="form-group">
+        <label>Пароль</label>
+        <input type="password" id="regPassword" placeholder="Минимум 6 символов" minlength="6" required>
+      </div>
+      <div class="form-group">
+        <label>Подтверждение пароля</label>
+        <input type="password" id="regPassword2" placeholder="Повторите пароль" required>
+      </div>
+      <div class="form-group">
+        <label>Роль</label>
+        <select id="regRole">
+          <option value="user">Пользователь</option>
+          <option value="editor">Редактор</option>
+          <option value="admin">Администратор</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary">
+        <i class="fas fa-user-plus"></i> Создать аккаунт
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ========== MAIN APP ========== -->
+<div id="appScreen">
+
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div class="topbar-brand">
+      <i class="fas fa-globe-americas"></i>
+      <span>GeoWeb Pro</span>
+    </div>
+
+    <div class="topbar-menu">
+      <!-- Файл -->
+      <div class="menu-item">
+        <i class="fas fa-file"></i> Файл
+        <div class="menu-dropdown">
+          <div class="menu-dropdown-item" onclick="importGeoJSONFile()">
+            <i class="fas fa-file-import"></i> Импорт GeoJSON
+          </div>
+          <div class="menu-dropdown-item" onclick="importGeoJSONUrl()">
+            <i class="fas fa-link"></i> Загрузить из URL
+          </div>
+          <div class="menu-dropdown-item" onclick="importGeoJSONText()">
+            <i class="fas fa-keyboard"></i> Вставить GeoJSON
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" onclick="exportAllGeoJSON()">
+            <i class="fas fa-file-export"></i> Экспорт всех слоёв
+          </div>
+          <div class="menu-dropdown-item" onclick="exportCurrentLayer()">
+            <i class="fas fa-download"></i> Экспорт текущего слоя
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" onclick="printMap()">
+            <i class="fas fa-print"></i> Печать карты
+          </div>
+          <div class="menu-dropdown-item" onclick="exportMapImage()">
+            <i class="fas fa-image"></i> Экспорт как PNG
+          </div>
+        </div>
+      </div>
+
+      <!-- Правка -->
+      <div class="menu-item">
+        <i class="fas fa-edit"></i> Правка
+        <div class="menu-dropdown">
+          <div class="menu-dropdown-item" onclick="startDraw('polygon')">
+            <i class="fas fa-draw-polygon"></i> Нарисовать полигон
+          </div>
+          <div class="menu-dropdown-item" onclick="startDraw('line')">
+            <i class="fas fa-minus"></i> Нарисовать линию
+          </div>
+          <div class="menu-dropdown-item" onclick="startDraw('marker')">
+            <i class="fas fa-map-marker-alt"></i> Добавить точку
+          </div>
+          <div class="menu-dropdown-item" onclick="startDraw('circle')">
+            <i class="fas fa-circle"></i> Добавить круг
+          </div>
+          <div class="menu-dropdown-item" onclick="startDraw('rectangle')">
+            <i class="fas fa-square"></i> Добавить прямоугольник
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" onclick="toggleEditing()">
+            <i class="fas fa-pen"></i> Режим редактирования
+          </div>
+          <div class="menu-dropdown-item" onclick="deleteSelectedFeatures()">
+            <i class="fas fa-trash"></i> Удалить выбранные
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" onclick="selectAllFeatures()">
+            <i class="fas fa-check-double"></i> Выбрать все
+          </div>
+          <div class="menu-dropdown-item" onclick="clearSelection()">
+            <i class="fas fa-times"></i> Снять выделение
+          </div>
+        </div>
+      </div>
+
+      <!-- Вид -->
+      <div class="menu-item">
+        <i class="fas fa-eye"></i> Вид
+        <div class="menu-dropdown">
+          <div class="menu-dropdown-item" onclick="toggleLeftPanel()">
+            <i class="fas fa-columns"></i> Левая панель
+          </div>
+          <div class="menu-dropdown-item" onclick="toggleRightPanel()">
+            <i class="fas fa-table"></i> Таблица атрибутов
+          </div>
+          <div class="menu-dropdown-item" onclick="toggleBottomPanel()">
+            <i class="fas fa-window-maximize"></i> Консоль
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" onclick="zoomToAll()">
+            <i class="fas fa-expand"></i> Показать всё
+          </div>
+          <div class="menu-dropdown-item" onclick="toggleFullscreen()">
+            <i class="fas fa-expand-arrows-alt"></i> Полный экран
+          </div>
+        </div>
+      </div>
+
+      <!-- Слой -->
+      <div class="menu-item">
+        <i class="fas fa-layer-group"></i> Слой
+        <div class="menu-dropdown">
+          <div class="menu-dropdown-item" onclick="addEmptyLayer()">
+            <i class="fas fa-plus"></i> Новый пустой слой
+          </div>
+          <div class="menu-dropdown-item" onclick="duplicateLayer()">
+            <i class="fas fa-copy"></i> Дублировать слой
+          </div>
+          <div class="menu-dropdown-item" onclick="mergeLayers()">
+            <i class="fas fa-object-group"></i> Объединить слои
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" onclick="styleLayer()">
+            <i class="fas fa-palette"></i> Стили слоя
+          </div>
+          <div class="menu-dropdown-item" onclick="filterLayer()">
+            <i class="fas fa-filter"></i> Фильтр по атрибутам
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" onclick="removeLayer()">
+            <i class="fas fa-trash-alt"></i> Удалить слой
+          </div>
+        </div>
+      </div>
+
+      <!-- Анализ -->
+      <div class="menu-item">
+        <i class="fas fa-chart-area"></i> Анализ
+        <div class="menu-dropdown">
+          <div class="menu-dropdown-item" onclick="measureDistance()">
+            <i class="fas fa-ruler"></i> Измерить расстояние
+          </div>
+          <div class="menu-dropdown-item" onclick="measureArea()">
+            <i class="fas fa-ruler-combined"></i> Измерить площадь
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" onclick="bufferAnalysis()">
+            <i class="fas fa-bullseye"></i> Буферная зона
+          </div>
+          <div class="menu-dropdown-item" onclick="unionAnalysis()">
+            <i class="fas fa-object-ungroup"></i> Объединение
+          </div>
+          <div class="menu-dropdown-item" onclick="intersectionAnalysis()">
+            <i class="fas fa-not-equal"></i> Пересечение
+          </div>
+          <div class="menu-dropdown-item" onclick="differenceAnalysis()">
+            <i class="fas fa-cut"></i> Разность
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" onclick="centroidAnalysis()">
+            <i class="fas fa-dot-circle"></i> Центроиды
+          </div>
+          <div class="menu-dropdown-item" onclick="convexHullAnalysis()">
+            <i class="fas fa-shield-alt"></i> Выпуклая оболочка
+          </div>
+          <div class="menu-dropdown-item" onclick="bboxAnalysis()">
+            <i class="fas fa-vector-square"></i> Ограничивающий прямоугольник
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" onclick="dissolveAnalysis()">
+            <i class="fas fa-compress-arrows-alt"></i> Объединение (Dissolve)
+          </div>
+          <div class="menu-dropdown-item" onclick="voronoiAnalysis()">
+            <i class="fas fa-th"></i> Диаграмма Вороного
+          </div>
+          <div class="menu-dropdown-item" onclick="tinAnalysis()">
+            <i class="fas fa-grip-lines"></i> TIN триангуляция
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" onclick="nearestAnalysis()">
+            <i class="fas fa-arrows-alt"></i> Ближайший объект
+          </div>
+          <div class="menu-dropdown-item" onclick="pointOnSurface()">
+            <i class="fas fa-map-pin"></i> Точка внутри полигона
+          </div>
+        </div>
+      </div>
+
+      <!-- Проекция -->
+      <div class="menu-item">
+        <i class="fas fa-project-diagram"></i> Проекция
+        <div class="menu-dropdown">
+          <div class="menu-dropdown-item" onclick="setCRS('EPSG:4326')">
+            <i class="fas fa-globe"></i> WGS 84 (EPSG:4326)
+          </div>
+          <div class="menu-dropdown-item" onclick="setCRS('EPSG:3857')">
+            <i class="fas fa-globe"></i> Pseudo-Mercator (EPSG:3857)
+          </div>
+          <div class="menu-dropdown-item" onclick="setCRS('EPSG:32637')">
+            <i class="fas fa-globe"></i> UTM 37N (EPSG:32637)
+          </div>
+          <div class="menu-dropdown-item" onclick="setCRS('EPSG:4284')">
+            <i class="fas fa-globe"></i> SK-42 (EPSG:4284)
+          </div>
+          <div class="menu-dropdown-item" onclick="setCRS('EPSG:3847')">
+            <i class="fas fa-globe"></i> СК-95 (EPSG:3847)
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" onclick="transformCoordinates()">
+            <i class="fas fa-exchange-alt"></i> Преобразовать координаты
+          </div>
+        </div>
+      </div>
+
+      <!-- Инструменты -->
+      <div class="menu-item">
+        <i class="fas fa-tools"></i> Инструменты
+        <div class="menu-dropdown">
+          <div class="menu-dropdown-item" onclick="addBookmarks()">
+            <i class="fas fa-bookmark"></i> Закладки
+          </div>
+          <div class="menu-dropdown-item" onclick="gpsTrack()">
+            <i class="fas fa-satellite-dish"></i> GPS трекинг
+          </div>
+          <div class="menu-dropdown-item" onclick="geocodeSearch()">
+            <i class="fas fa-search-location"></i> Поиск места
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" onclick="addGraticule()">
+            <i class="fas fa-border-all"></i> Координатная сетка
+          </div>
+          <div class="menu-dropdown-item" onclick="addScaleBar()">
+            <i class="fas fa-ruler-horizontal"></i> Масштабная линейка
+          </div>
+          <div class="menu-dropdown-item" onclick="addNorthArrow()">
+            <i class="fas fa-compass"></i> Северная стрелка
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <span id="crsDisplay" style="font-size:12px;color:var(--text-dim);">EPSG:4326</span>
+      <div class="user-info">
+        <div class="user-avatar" id="userAvatar">U</div>
+        <span id="userName">User</span>
+      </div>
+      <button class="btn btn-sm btn-outline" onclick="logout()" title="Выход">
+        <i class="fas fa-sign-out-alt"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Layout -->
+  <div class="main-layout">
+
+    <!-- Left Panel -->
+    <div class="left-panel" id="leftPanel">
+      <div class="panel-tabs">
+        <div class="panel-tab active" onclick="switchPanelTab('layers', this)">
+          <i class="fas fa-layer-group"></i> Слои
+        </div>
+        <div class="panel-tab" onclick="switchPanelTab('style', this)">
+          <i class="fas fa-palette"></i> Стили
+        </div>
+        <div class="panel-tab" onclick="switchPanelTab('analysis', this)">
+          <i class="fas fa-chart-area"></i> Анализ
+        </div>
+        <div class="panel-tab" onclick="switchPanelTab('tools', this)">
+          <i class="fas fa-tools"></i> Инструменты
+        </div>
+      </div>
+
+      <div class="panel-content">
+        <!-- Layers Tab -->
+        <div id="layersTab" class="panel-section active">
+          <div class="search-box">
+            <input type="text" id="layerSearch" placeholder="Поиск слоёв..." oninput="searchLayers(this.value)">
+          </div>
+          <div id="layersList"></div>
+          <button class="btn btn-sm btn-outline" onclick="addEmptyLayer()" style="width:100%;margin-top:10px;">
+            <i class="fas fa-plus"></i> Добавить слой
+          </button>
+        </div>
+
+        <!-- Style Tab -->
+        <div id="styleTab" class="panel-section">
+          <h4 style="margin-bottom:12px;font-size:14px;">Стилизация слоя</h4>
+          <div id="styleControls">
+            <div class="style-row">
+              <label>Цвет линии</label>
+              <input type="color" id="strokeColor" value="#e94560" onchange="updateLayerStyle()">
+            </div>
+            <div class="style-row">
+              <label>Толщина</label>
+              <input type="number" id="strokeWeight" value="2" min="1" max="20" onchange="updateLayerStyle()">
+            </div>
+            <div class="style-row">
+              <label>Цвет заливки</label>
+              <input type="color" id="fillColor" value="#e94560" onchange="updateLayerStyle()">
+            </div>
+            <div class="style-row">
+              <label>Прозрачность</label>
+              <input type="range" id="fillOpacity" min="0" max="100" value="30" onchange="updateLayerStyle()">
+              <span id="fillOpacityVal">0.30</span>
+            </div>
+            <div class="style-row">
+              <label>Тип линии</label>
+              <select id="dashArray" onchange="updateLayerStyle()">
+                <option value="">Сплошная</option>
+                <option value="5,5">Пунктир</option>
+                <option value="10,5">Штрих</option>
+                <option value="2,5">Точки</option>
+              </select>
+            </div>
+            <div class="style-row">
+              <label>Радиус точки</label>
+              <input type="number" id="pointRadius" value="6" min="1" max="50" onchange="updateLayerStyle()">
+            </div>
+            <div class="style-row">
+              <label>Маркер</label>
+              <select id="markerIcon" onchange="updateLayerStyle()">
+                <option value="default">Стандартный</option>
+                <option value="circle">Круг</option>
+                <option value="square">Квадрат</option>
+              </select>
+            </div>
+            <hr style="border-color:var(--border);margin:15px 0;">
+            <h4 style="margin-bottom:12px;font-size:14px;">Хороплет (по атрибуту)</h4>
+            <div class="style-row">
+              <label>Поле</label>
+              <select id="choroplethField"><option value="">— Выберите —</option></select>
+            </div>
+            <div class="style-row">
+              <label>Цветовая схема</label>
+              <select id="choroplethScheme" onchange="updateLayerStyle()">
+                <option value="reds">Красные</option>
+                <option value="blues">Синие</option>
+                <option value="greens">Зелёные</option>
+                <option value="purples">Фиолетовые</option>
+                <option value="oranges">Оранжевые</option>
+              </select>
+            </div>
+            <div class="style-row">
+              <label>Классы</label>
+              <input type="number" id="choroplethClasses" value="5" min="2" max="10" onchange="updateLayerStyle()">
+            </div>
+            <button class="btn btn-sm btn-info" onclick="applyChoropleth()" style="width:100%;margin-top:8px;">
+              <i class="fas fa-palette"></i> Применить хороплет
+            </button>
+          </div>
+        </div>
+
+        <!-- Analysis Tab -->
+        <div id="analysisTab" class="panel-section">
+          <h4 style="margin-bottom:12px;font-size:14px;">Геоаналитика</h4>
+
+          <div class="analysis-card">
+            <h4><i class="fas fa-ruler"></i> Измерение</h4>
+            <button class="btn btn-sm btn-outline" onclick="measureDistance()" style="width:100%;margin-bottom:6px;">
+              <i class="fas fa-ruler"></i> Расстояние
+            </button>
+            <button class="btn btn-sm btn-outline" onclick="measureArea()" style="width:100%;margin-bottom:6px;">
+              <i class="fas fa-ruler-combined"></i> Площадь
+            </button>
+            <div id="measureResult" class="measure-result" style="display:none;"></div>
+          </div>
+
+          <div class="analysis-card">
+            <h4><i class="fas fa-bullseye"></i> Буфер</h4>
+            <div class="form-group">
+              <label>Радиус (км)</label>
+              <input type="number" id="bufferRadius" value="1" min="0.01" step="0.1">
+            </div>
+            <button class="btn btn-sm btn-success" onclick="bufferAnalysis()" style="width:100%;">
+              <i class="fas fa-bullseye"></i> Создать буфер
+            </button>
+          </div>
+
+          <div class="analysis-card">
+            <h4><i class="fas fa-object-group"></i> Операции</h4>
+            <button class="btn btn-sm btn-outline" onclick="unionAnalysis()" style="width:100%;margin-bottom:6px;">
+              <i class="fas fa-object-ungroup"></i> Объединение (Union)
+            </button>
+            <button class="btn btn-sm btn-outline" onclick="intersectionAnalysis()" style="width:100%;margin-bottom:6px;">
+              <i class="fas fa-not-equal"></i> Пересечение (Intersect)
+            </button>
+            <button class="btn btn-sm btn-outline" onclick="differenceAnalysis()" style="width:100%;margin-bottom:6px;">
+              <i class="fas fa-cut"></i> Разность (Difference)
+            </button>
+            <button class="btn btn-sm btn-outline" onclick="dissolveAnalysis()" style="width:100%;margin-bottom:6px;">
+              <i class="fas fa-compress-arrows-alt"></i> Dissolve
+            </button>
+            <button class="btn btn-sm btn-outline" onclick="centroidAnalysis()" style="width:100%;margin-bottom:6px;">
+              <i class="fas fa-dot-circle"></i> Центроиды
+            </button>
+            <button class="btn btn-sm btn-outline" onclick="convexHullAnalysis()" style="width:100%;margin-bottom:6px;">
+              <i class="fas fa-shield-alt"></i> Выпуклая оболочка
+            </button>
+            <button class="btn btn-sm btn-outline" onclick="bboxAnalysis()" style="width:100%;margin-bottom:6px;">
+              <i class="fas fa-vector-square"></i> BBOX
+            </button>
+            <button class="btn btn-sm btn-outline" onclick="voronoiAnalysis()" style="width:100%;margin-bottom:6px;">
+              <i class="fas fa-th"></i> Диаграмма Вороного
+            </button>
+          </div>
+
+          <div class="analysis-card">
+            <h4><i class="fas fa-chart-bar"></i> Статистика</h4>
+            <button class="btn btn-sm btn-outline" onclick="layerStatistics()" style="width:100%;margin-bottom:6px;">
+              <i class="fas fa-calculator"></i> Статистика слоя
+            </button>
+            <button class="btn btn-sm btn-outline" onclick="countFeatures()" style="width:100%;margin-bottom:6px;">
+              <i class="fas fa-hashtag"></i> Подсчёт объектов
+            </button>
+            <div id="statsResult" style="margin-top:8px;font-size:12px;"></div>
+          </div>
+        </div>
+
+        <!-- Tools Tab -->
+        <div id="toolsTab" class="panel-section">
+          <h4 style="margin-bottom:12px;font-size:14px;">Инструменты</h4>
+
+          <div class="analysis-card">
+            <h4><i class="fas fa-search-location"></i> Поиск</h4>
+            <div class="form-group">
+              <input type="text" id="geocodeInput" placeholder="Введите адрес...">
+            </div>
+            <button class="btn btn-sm btn-info" onclick="geocodeAddress()" style="width:100%;">
+              <i class="fas fa-search"></i> Найти
+            </button>
+          </div>
+
+          <div class="analysis-card">
+            <h4><i class="fas fa-exchange-alt"></i> Преобразование координат</h4>
+            <div class="form-group">
+              <label>Lat</label>
+              <input type="number" id="coordLat" step="any" placeholder="55.7558">
+            </div>
+            <div class="form-group">
+              <label>Lon</label>
+              <input type="number" id="coordLon" step="any" placeholder="37.6173">
+            </div>
+            <div class="form-group">
+              <label>Из CRS</label>
+              <select id="fromCRS">
+                <option value="EPSG:4326">WGS 84</option>
+                <option value="EPSG:3857">Pseudo-Mercator</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>В CRS</label>
+              <select id="toCRS">
+                <option value="EPSG:3857">Pseudo-Mercator</option>
+                <option value="EPSG:4326">WGS 84</option>
+              </select>
+            </div>
+            <button class="btn btn-sm btn-success" onclick="transformCoords()" style="width:100%;">
+              <i class="fas fa-exchange-alt"></i> Преобразовать
+            </button>
+            <div id="transformResult" class="measure-result" style="display:none;margin-top:8px;"></div>
+          </div>
+
+          <div class="analysis-card">
+            <h4><i class="fas fa-bookmark"></i> Закладки</h4>
+            <button class="btn btn-sm btn-warning" onclick="addBookmark()" style="width:100%;margin-bottom:8px;">
+              <i class="fas fa-plus"></i> Добавить закладку
+            </button>
+            <div id="bookmarksList"></div>
+          </div>
+
+          <div class="analysis-card">
+            <h4><i class="fas fa-satellite-dish"></i> GPS</h4>
+            <button class="btn btn-sm btn-success" id="gpsBtn" onclick="toggleGPS()" style="width:100%;">
+              <i class="fas fa-satellite-dish"></i> Включить GPS
+            </button>
+            <div id="gpsInfo" style="margin-top:8px;font-size:12px;display:none;">
+              <div>Широта: <span id="gpsLat">—</span></div>
+              <div>Долгота: <span id="gpsLon">—</span></div>
+              <div>Точность: <span id="gpsAcc">—</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map Area -->
+    <div class="map-area" id="mapArea">
+      <div id="map"></div>
+
+      <!-- Quick Actions -->
+      <div class="quick-actions">
+        <button class="quick-action-btn" onclick="zoomIn()" title="Приблизить"><i class="fas fa-plus"></i></button>
+        <button class="quick-action-btn" onclick="zoomOut()" title="Отдалить"><i class="fas fa-minus"></i></button>
+        <button class="quick-action-btn" onclick="zoomToAll()" title="Показать всё"><i class="fas fa-expand"></i></button>
+        <div style="width:1px;background:var(--border);margin:4px 2px;"></div>
+        <button class="quick-action-btn" id="drawPolygonBtn" onclick="startDraw('polygon')" title="Полигон"><i class="fas fa-draw-polygon"></i></button>
+        <button class="quick-action-btn" id="drawLineBtn" onclick="startDraw('line')" title="Линия"><i class="fas fa-minus"></i></button>
+        <button class="quick-action-btn" id="drawMarkerBtn" onclick="startDraw('marker')" title="Точка"><i class="fas fa-map-marker-alt"></i></button>
+        <button class="quick-action-btn" id="drawCircleBtn" onclick="startDraw('circle')" title="Круг"><i class="fas fa-circle"></i></button>
+        <button class="quick-action-btn" id="drawRectBtn" onclick="startDraw('rectangle')" title="Прямоугольник"><i class="fas fa-square"></i></button>
+        <div style="width:1px;background:var(--border);margin:4px 2px;"></div>
+        <button class="quick-action-btn" id="measureBtn" onclick="measureDistance()" title="Измерить"><i class="fas fa-ruler"></i></button>
+        <button class="quick-action-btn" onclick="toggleEditing()" title="Редактировать"><i class="fas fa-pen"></i></button>
+      </div>
+
+      <!-- Coordinate Display -->
+      <div class="coord-display" id="coordDisplay">
+        Lat: 0.000000 | Lon: 0.000000
+      </div>
+
+      <!-- Scale Info -->
+      <div class="scale-info" id="scaleInfo">
+        Zoom: 3 | Scale: ~1:500M
+      </div>
+
+      <!-- Toggle Left -->
+      <div class="panel-toggle toggle-left" onclick="toggleLeftPanel()">
+        <i class="fas fa-chevron-left" id="leftToggleIcon"></i>
+      </div>
+
+      <!-- Toggle Right -->
+      <div class="panel-toggle toggle-right" onclick="toggleRightPanel()">
+        <i class="fas fa-chevron-right" id="rightToggleIcon"></i>
+      </div>
+
+      <!-- Right Panel -->
+      <div class="right-panel" id="rightPanel">
+        <div class="panel-tabs">
+          <div class="panel-tab active" onclick="switchRightTab('attrTable', this)">
+            <i class="fas fa-table"></i> Атрибуты
+          </div>
+          <div class="panel-tab" onclick="switchRightTab('featureInfo', this)">
+            <i class="fas fa-info-circle"></i> Объект
+          </div>
+          <div class="panel-tab" onclick="switchRightTab('console', this)">
+            <i class="fas fa-terminal"></i> Консоль
+          </div>
+        </div>
+
+        <div class="panel-content">
+          <!-- Attribute Table -->
+          <div id="attrTableTab" class="panel-section active">
+            <div style="margin-bottom:10px;">
+              <select id="attrLayerSelect" onchange="showAttributeTable()" style="width:100%;padding:8px;background:var(--bg-dark);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;">
+                <option value="">— Выберите слой —</option>
+              </select>
+            </div>
+            <div class="search-box">
+              <input type="text" id="attrSearch" placeholder="Фильтр..." oninput="filterAttributeTable()">
+            </div>
+            <div class="attr-table-container" id="attrTableContainer">
+              <p style="color:var(--text-dim);font-size:13px;text-align:center;padding:20px;">
+                Выберите слой для просмотра атрибутов
+              </p>
+            </div>
+          </div>
+
+          <!-- Feature Info -->
+          <div id="featureInfoTab" class="panel-section">
+            <div id="featureInfoContent">
+              <p style="color:var(--text-dim);font-size:13px;text-align:center;padding:20px;">
+                Кликните на объект для просмотра информации
+              </p>
+            </div>
+          </div>
+
+          <!-- Console -->
+          <div id="consoleTab" class="panel-section">
+            <div id="consoleOutput" style="font-family:monospace;font-size:12px;color:var(--text-dim);">
+              <div style="color:var(--success);">[GeoWeb Pro] Система готова к работе</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Panel -->
+  <div class="bottom-panel" id="bottomPanel">
+    <div class="bottom-header">
+      <span><i class="fas fa-terminal"></i> Консоль</span>
+      <button class="bottom-close" onclick="toggleBottomPanel()"><i class="fas fa-times"></i></button>
+    </div>
+    <div id="bottomConsole" style="padding:10px;font-family:monospace;font-size:12px;color:var(--text-dim);height:calc(100% - 36px);overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- ========== MODALS ========== -->
+
+<!-- Import GeoJSON Modal -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-file-import"></i> Импорт GeoJSON</h3>
+      <button class="modal-close" onclick="closeModal('importModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Имя слоя</label>
+        <input type="text" id="importLayerName" placeholder="Мой слой">
+      </div>
+      <div class="form-group">
+        <label>Файл GeoJSON</label>
+        <input type="file" id="importFile" accept=".json,.geojson" onchange="handleFileSelect(event)" style="color:var(--text);">
+      </div>
+      <div class="form-group">
+        <label>Или вставьте GeoJSON</label>
+        <textarea class="geojson-input" id="importGeoJSONText" placeholder='{"type":"FeatureCollection","features":[...]}'></textarea>
+      </div>
+      <div class="form-group">
+        <label>Или URL</label>
+        <input type="url" id="importGeoJSONUrl" placeholder="https://example.com/data.geojson">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('importModal')">Отмена</button>
+      <button class="btn btn-primary" onclick="processImport()">
+        <i class="fas fa-file-import"></i> Импортировать
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Style Modal -->
+<div class="modal-overlay" id="styleModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-palette"></i> Стилизация слоя</h3>
+      <button class="modal-close" onclick="closeModal('styleModal')">&times;</button>
+    </div>
+    <div class="modal-body" id="styleModalBody">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('styleModal')">Закрыть</button>
+      <button class="btn btn-primary" onclick="applyStyleFromModal()">
+        <i class="fas fa-check"></i> Применить
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Buffer Modal -->
+<div class="modal-overlay" id="bufferModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-bullseye"></i> Буферная зона</h3>
+      <button class="modal-close" onclick="closeModal('bufferModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Исходный слой</label>
+        <select id="bufferSourceLayer"></select>
+      </div>
+      <div class="form-group">
+        <label>Радиус (километры)</label>
+        <input type="number" id="bufferRadiusModal" value="5" min="0.01" step="0.1">
+      </div>
+      <div class="form-group">
+        <label>Имя результата</label>
+        <input type="text" id="bufferResultName" placeholder="Буфер">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('bufferModal')">Отмена</button>
+      <button class="btn btn-primary" onclick="processBuffer()">
+        <i class="fas fa-bullseye"></i> Создать
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Statistics Modal -->
+<div class="modal-overlay" id="statsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-calculator"></i> Статистика слоя</h3>
+      <button class="modal-close" onclick="closeModal('statsModal')">&times;</button>
+    </div>
+    <div class="modal-body" id="statsModalBody">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('statsModal')">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- Filter Modal -->
+<div class="modal-overlay" id="filterModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-filter"></i> Фильтр по атрибутам</h3>
+      <button class="modal-close" onclick="closeModal('filterModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Поле</label>
+        <select id="filterField"></select>
+      </div>
+      <div class="form-group">
+        <label>Оператор</label>
+        <select id="filterOperator">
+          <option value="==">Равно</option>
+          <option value="!=">Не равно</option>
+          <option value=">">Больше</option>
+          <option value="<">Меньше</option>
+          <option value=">=">Больше или равно</option>
+          <option value="<=">Меньше или равно</option>
+          <option value="contains">Содержит</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Значение</label>
+        <input type="text" id="filterValue" placeholder="Значение">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('filterModal')">Отмена</button>
+      <button class="btn btn-primary" onclick="applyFilter()">
+        <i class="fas fa-filter"></i> Применить
+      </button>
+      <button class="btn btn-warning" onclick="clearFilter()">
+        <i class="fas fa-times"></i> Сбросить
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Search Modal -->
+<div class="modal-overlay" id="searchModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-search"></i> Поиск места</h3>
+      <button class="modal-close" onclick="closeModal('searchModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Запрос</label>
+        <input type="text" id="searchQuery" placeholder="Москва, Красная площадь...">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('searchModal')">Отмена</button>
+      <button class="btn btn-primary" onclick="performSearch()">
+        <i class="fas fa-search"></i> Найти
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Transform Modal -->
+<div class="modal-overlay" id="transformModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-exchange-alt"></i> Преобразование координат</h3>
+      <button class="modal-close" onclick="closeModal('transformModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>X / Lon</label>
+        <input type="number" id="transformX" step="any" placeholder="37.6173">
+      </div>
+      <div class="form-group">
+        <label>Y / Lat</label>
+        <input type="number" id="transformY" step="any" placeholder="55.7558">
+      </div>
+      <div class="form-group">
+        <label>Из CRS</label>
+        <input type="text" id="transformFromCRS" value="EPSG:4326">
+      </div>
+      <div class="form-group">
+        <label>В CRS</label>
+        <input type="text" id="transformToCRS" value="EPSG:3857">
+      </div>
+      <div id="transformOutput" class="measure-result" style="display:none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('transformModal')">Закрыть</button>
+      <button class="btn btn-primary" onclick="processTransform()">
+        <i class="fas fa-exchange-alt"></i> Преобразовать
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ============================================================
+// GEOWEB PRO — Full-Featured GeoGIS Platform
+// ============================================================
+
+// ==================== AUTH SYSTEM ====================
+const DB = {
+  getUsers() {
+    return JSON.parse(localStorage.getItem('geoweb_users') || '[]');
+  },
+  saveUsers(users) {
+    localStorage.setItem('geoweb_users', JSON.stringify(users));
+  },
+  getCurrentUser() {
+    return JSON.parse(sessionStorage.getItem('geoweb_current') || localStorage.getItem('geoweb_current') || 'null');
+  },
+  saveCurrentUser(user) {
+    if (user) {
+      const storage = document.getElementById('rememberMe')?.checked ? localStorage : sessionStorage;
+      storage.setItem('geoweb_current', JSON.stringify(user));
+    }
+  },
+  clearCurrentUser() {
+    localStorage.removeItem('geoweb_current');
+    sessionStorage.removeItem('geoweb_current');
+  }
+};
+
+function switchAuthTab(tab) {
+  document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+  if (tab === 'login') {
+    document.querySelectorAll('.auth-tab')[0].classList.add('active');
+    document.getElementById('loginForm').classList.add('active');
+  } else {
+    document.querySelectorAll('.auth-tab')[1].classList.add('active');
+    document.getElementById('registerForm').classList.add('active');
+  }
+  document.getElementById('authError').style.display = 'none';
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('authError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function handleRegister(e) {
+  e.preventDefault();
+  const name = document.getElementById('regName').value.trim();
+  const email = document.getElementById('regEmail').value.trim().toLowerCase();
+  const password = document.getElementById('regPassword').value;
+  const password2 = document.getElementById('regPassword2').value;
+  const role = document.getElementById('regRole').value;
+
+  if (password !== password2) return showAuthError('Пароли не совпадают');
+  if (password.length < 6) return showAuthError('Пароль минимум 6 символов');
+
+  const users = DB.getUsers();
+  if (users.find(u => u.email === email)) return showAuthError('Email уже зарегистрирован');
+
+  const user = {
+    id: Date.now().toString(),
+    name,
+    email,
+    password: btoa(password), // Simple encoding (not secure, demo only)
+    role,
+    created: new Date().toISOString(),
+    projects: [],
+    settings: { theme: 'dark' }
+  };
+
+  users.push(user);
+  DB.saveUsers(users);
+  DB.saveCurrentUser({ id: user.id, name: user.name, email: user.email, role: user.role });
+
+  showAuthSuccess('Аккаунт создан! Входим...');
+  setTimeout(() => enterApp(user), 1000);
+}
+
+function showAuthSuccess(msg) {
+  const el = document.getElementById('authError');
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.style.borderColor = 'var(--success)';
+  el.style.background = 'rgba(0,184,148,0.2)';
+  el.style.color = 'var(--success)';
+}
+
+function handleLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+  const password = document.getElementById('loginPassword').value;
+
+  const users = DB.getUsers();
+  const user = users.find(u => u.email === email && atob(u.password) === password);
+
+  if (!user) return showAuthError('Неверный email или пароль');
+
+  DB.saveCurrentUser({ id: user.id, name: user.name, email: user.email, role: user.role });
+  enterApp(user);
+}
+
+function enterApp(user) {
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'block';
+  document.getElementById('userName').textContent = user.name;
+  document.getElementById('userAvatar').textContent = user.name.charAt(0).toUpperCase();
+
+  logConsole(`Пользователь ${user.name} (${user.role}) вошёл в систему`);
+  initMap();
+  initApp();
+}
+
+function logout() {
+  DB.clearCurrentUser();
+  location.reload();
+}
+
+// Check session on load
+(function checkSession() {
+  const user = DB.getCurrentUser();
+  if (user) {
+    const users = DB.getUsers();
+    const fullUser = users.find(u => u.id === user.id);
+    if (fullUser) {
+      enterApp(fullUser);
+    }
+  }
+})();
+
+// ==================== MAP INITIALIZATION ====================
+let map, drawControl, drawnItems, measureControl;
+let layers = [];
+let currentLayerId = null;
+let activeTool = null;
+let measureMode = null;
+let measurePoints = [];
+let measureLayer = null;
+let gpsWatchId = null;
+let graticuleLayer = null;
+let scaleBarControl = null;
+let northArrowControl = null;
+let bookmarks = [];
+
+function initMap() {
+  map = L.map('map', {
+    center: [55.7558, 37.6173],
+    zoom: 5,
+    zoomControl: false,
+    attributionControl: true
+  });
+
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  // Base layers
+  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19
+  });
+
+  const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri',
+    maxZoom: 18
+  });
+
+  const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenTopoMap',
+    maxZoom: 17
+  });
+
+  const darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© CartoDB',
+    maxZoom: 19
+  });
+
+  const baseMaps = {
+    'OSM': osmLayer,
+    'Спутник': satelliteLayer,
+    'Топо': topoLayer,
+    'Тёмная': darkLayer
+  };
+
+  osmLayer.addTo(map);
+  L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
+
+  // Draw control
+  drawnItems = new L.FeatureGroup();
+  map.addLayer(drawnItems);
+
+  drawControl = new L.Control.Draw({
+    position: 'topright',
+    draw: {
+      polygon: { shapeOptions: { color: '#e94560' } },
+      polyline: { shapeOptions: { color: '#e94560' } },
+      circle: { shapeOptions: { color: '#e94560' } },
+      rectangle: { shapeOptions: { color: '#e94560' } },
+      marker: true,
+      circlemarker: false
+    },
+    edit: {
+      featureGroup: drawnItems,
+      remove: true
+    }
+  });
+  map.addControl(drawControl);
+
+  // Draw events
+  map.on(L.Draw.Event.CREATED, function(e) {
+    const layer = e.layer;
+    drawnItems.addLayer(layer);
+    addToCurrentLayer(layer);
+    logConsole(`Создан объект: ${e.layerType}`);
+  });
+
+  map.on(L.Draw.Event.EDITED, function() {
+    syncDrawnToLayers();
+    logConsole('Объекты отредактированы');
+  });
+
+  map.on(L.Draw.Event.DELETED, function() {
+    syncDrawnToLayers();
+    logConsole('Объекты удалены');
+  });
+
+  // Mouse move - coordinates
+  map.on('mousemove', function(e) {
+    document.getElementById('coordDisplay').textContent =
+      `Lat: ${e.latlng.lat.toFixed(6)} | Lon: ${e.latlng.lng.toFixed(6)}`;
+  });
+
+  map.on('zoomend', updateScaleInfo);
+  updateScaleInfo();
+
+  // Scale bar
+  L.control.scale({ position: 'bottomleft', imperial: false }).addTo(map);
+
+  // Click for feature info
+  map.on('click', function(e) {
+    if (measureMode === 'distance' || measureMode === 'area') {
+      addMeasurePoint(e.latlng);
+    }
+  });
+}
+
+function updateScaleInfo() {
+  const z = map.getZoom();
+  const scales = {
+    1: '1:500M', 2: '1:250M', 3: '1:150M', 4: '1:70M', 5: '1:35M',
+    6: '1:20M', 7: '1:10M', 8: '1:4M', 9: '1:2M', 10: '1:1M',
+    11: '1:500K', 12: '1:250K', 13: '1:100K', 14: '1:50K', 15: '1:25K',
+    16: '1:12K', 17: '1:6K', 18: '1:3K', 19: '1:1K'
+  };
+  document.getElementById('scaleInfo').textContent = `Zoom: ${z} | Scale: ~${scales[z] || '—'}`;
+}
+
+// ==================== APP INITIALIZATION ====================
+function initApp() {
+  // Add default empty layer
+  addEmptyLayer('Слой 1');
+
+  // Load saved layers
+  loadSavedLayers();
+  loadBookmarks();
+  updateLayerList();
+  updateLayerSelects();
+}
+
+// ==================== LAYER MANAGEMENT ====================
+let layerCounter = 0;
+
+function createLayer(name, geojsonData, options = {}) {
+  const id = 'layer_' + (++layerCounter);
+  const defaultStyle = {
+    color: options.color || randomColor(),
+    weight: options.weight || 2,
+    fillColor: options.fillColor || options.color || randomColor(),
+    fillOpacity: options.fillOpacity || 0.3,
+    dashArray: options.dashArray || '',
+    pointRadius: options.pointRadius || 6
+  };
+
+  const layer = {
+    id,
+    name: name || `Слой ${layerCounter}`,
+    data: geojsonData || { type: 'FeatureCollection', features: [] },
+    style: defaultStyle,
+    visible: true,
+    opacity: 1,
+    leafletLayer: null,
+    created: new Date().toISOString()
+  };
+
+  layers.push(layer);
+  renderLayer(layer);
+  updateLayerList();
+  updateLayerSelects();
+  return layer;
+}
+
+function addEmptyLayer(name) {
+  const layer = createLayer(name || `Слой ${layerCounter + 1}`, {
+    type: 'FeatureCollection',
+    features: []
+  });
+  showToast(`Слой "${layer.name}" создан`, 'success');
+  return layer;
+}
+
+function renderLayer(layer) {
+  if (layer.leafletLayer) {
+    map.removeLayer(layer.leafletLayer);
+  }
+
+  if (!layer.data || !layer.data.features || layer.data.features.length === 0) return;
+
+  const style = getStyleFunction(layer);
+
+  layer.leafletLayer = L.geoJSON(layer.data, {
+    style: style,
+    pointToLayer: function(feature, latlng) {
+      return L.circleMarker(latlng, {
+        radius: layer.style.pointRadius || 6,
+        fillColor: layer.style.fillColor || layer.style.color,
+        color: layer.style.color,
+        weight: layer.style.weight || 2,
+        fillOpacity: layer.style.fillOpacity || 0.3,
+        dashArray: layer.style.dashArray || null
+      });
+    },
+    onEachFeature: function(feature, layer) {
+      layer.on('click', function(e) {
+        showFeatureInfo(feature, e.latlng);
+      });
+      layer.bindPopup(function(l) {
+        const props = l.feature?.properties || {};
+        let html = '<div class="feature-popup"><table>';
+        for (const [key, val] of Object.entries(props)) {
+          html += `<tr><td>${key}</td><td>${val}</td></tr>`;
+        }
+        html += '</table></div>';
+        return html || 'Нет атрибутов';
+      });
+    }
+  });
+
+  if (layer.visible) {
+    layer.leafletLayer.addTo(map);
+  }
+}
+
+function getStyleFunction(layer) {
+  return function(feature) {
+    return {
+      color: layer.style.color,
+      weight: layer.style.weight,
+      fillColor: layer.style.fillColor,
+      fillOpacity: layer.style.fillOpacity,
+      dashArray: layer.style.dashArray || null
+    };
+  };
+}
+
+function addToCurrentLayer(leafletLayer) {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return;
+
+  const geojson = leafletLayer.toGeoJSON();
+  layer.data.features.push(geojson);
+  renderLayer(layer);
+  updateLayerList();
+  showToast('Объект добавлен в слой', 'success');
+}
+
+function syncDrawnToLayers() {
+  // Sync drawn items back to layers
+  drawnItems.eachLayer(function(layer) {
+    // This is handled by renderLayer
+  });
+}
+
+function removeLayer(layerId) {
+  const idx = layers.findIndex(l => l.id === (layerId || currentLayerId));
+  if (idx === -1) return;
+
+  const layer = layers[idx];
+  if (layer.leafletLayer) map.removeLayer(layer.leafletLayer);
+  layers.splice(idx, 1);
+
+  if (currentLayerId === layer.id) {
+    currentLayerId = layers.length > 0 ? layers[0].id : null;
+  }
+
+  updateLayerList();
+  updateLayerSelects();
+  showToast(`Слой "${layer.name}" удалён`, 'warning');
+  logConsole(`Слой удалён: ${layer.name}`);
+}
+
+function toggleLayerVisibility(layerId) {
+  const layer = layers.find(l => l.id === layerId);
+  if (!layer) return;
+
+  layer.visible = !layer.visible;
+  if (layer.visible && layer.leafletLayer) {
+    map.addLayer(layer.leafletLayer);
+  } else if (layer.leafletLayer) {
+    map.removeLayer(layer.leafletLayer);
+  }
+
+  updateLayerList();
+}
+
+function setLayerOpacity(layerId, value) {
+  const layer = layers.find(l => l.id === layerId);
+  if (!layer) return;
+  layer.opacity = value;
+  if (layer.leafletLayer) {
+    layer.leafletLayer.eachLayer(function(l) {
+      if (l.setStyle) {
+        l.setStyle({ fillOpacity: value * (layer.style.fillOpacity || 0.3) });
+      }
+      if (l.setOpacity) l.setOpacity(value);
+    });
+  }
+}
+
+function duplicateLayer() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+
+  const copy = JSON.parse(JSON.stringify(layer.data));
+  createLayer(layer.name + ' (копия)', copy, { ...layer.style });
+  showToast(`Слой "${layer.name}" дублирован`, 'success');
+}
+
+function mergeLayers() {
+  if (layers.length < 2) return showToast('Нужно минимум 2 слоя', 'warning');
+
+  const merged = { type: 'FeatureCollection', features: [] };
+  layers.forEach(l => {
+    if (l.data && l.data.features) {
+      merged.features = merged.features.concat(l.data.features);
+    }
+  });
+
+  createLayer('Объединённый слой', merged);
+  showToast('Слои объединены', 'success');
+}
+
+// ==================== UI UPDATES ====================
+function updateLayerList() {
+  const container = document.getElementById('layersList');
+  if (layers.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:20px;">Нет слоёв</p>';
+    return;
+  }
+
+  container.innerHTML = layers.map(layer => `
+    <div class="layer-item ${layer.id === currentLayerId ? 'selected' : ''}"
+         onclick="selectLayer('${layer.id}')"
+         style="${layer.id === currentLayerId ? 'border-color:var(--accent);' : ''}">
+      <div class="layer-header">
+        <div class="layer-color" style="background:${layer.style.color}"></div>
+        <div class="layer-name" title="${layer.name}">${layer.name}</div>
+        <div class="layer-actions">
+          <button onclick="event.stopPropagation();toggleLayerVisibility('${layer.id}')" title="Видимость">
+            <i class="fas ${layer.visible ? 'fa-eye' : 'fa-eye-slash'}"></i>
+          </button>
+          <button onclick="event.stopPropagation();zoomToLayer('${layer.id}')" title="Показать">
+            <i class="fas fa-crosshairs"></i>
+          </button>
+          <button onclick="event.stopPropagation();removeLayer('${layer.id}')" title="Удалить">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </div>
+      <div class="layer-meta">
+        <span>${layer.data?.features?.length || 0} объектов</span>
+        <span>${layer.data.type || 'GeoJSON'}</span>
+      </div>
+      <div style="margin-top:6px;">
+        <input type="range" min="0" max="100" value="${layer.opacity * 100}"
+               onchange="setLayerOpacity('${layer.id}', this.value/100)"
+               style="width:100%;height:4px;">
+      </div>
+    </div>
+  `).join('');
+}
+
+function updateLayerSelects() {
+  const selects = ['attrLayerSelect', 'bufferSourceLayer'];
+  selects.forEach(selId => {
+    const sel = document.getElementById(selId);
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Выберите слой —</option>' +
+      layers.map(l => `<option value="${l.id}" ${l.id === currentLayerId ? 'selected' : ''}>${l.name}</option>`).join('');
+  });
+
+  // Update choropleth field selector
+  const layer = layers.find(l => l.id === currentLayerId);
+  const fieldSel = document.getElementById('choroplethField');
+  if (fieldSel && layer) {
+    const fields = new Set();
+    layer.data.features.forEach(f => {
+      if (f.properties) Object.keys(f.properties).forEach(k => fields.add(k));
+    });
+    fieldSel.innerHTML = '<option value="">— Выберите поле —</option>' +
+      [...fields].map(f => `<option value="${f}">${f}</option>`).join('');
+  }
+}
+
+function selectLayer(id) {
+  currentLayerId = id;
+  updateLayerList();
+  updateLayerSelects();
+
+  const layer = layers.find(l => l.id === id);
+  if (layer) {
+    document.getElementById('strokeColor').value = layer.style.color;
+    document.getElementById('fillColor').value = layer.style.fillColor || layer.style.color;
+    document.getElementById('strokeWeight').value = layer.style.weight || 2;
+    document.getElementById('fillOpacity').value = (layer.style.fillOpacity || 0.3) * 100;
+    document.getElementById('fillOpacityVal').textContent = layer.style.fillOpacity || 0.3;
+    document.getElementById('dashArray').value = layer.style.dashArray || '';
+    document.getElementById('pointRadius').value = layer.style.pointRadius || 6;
+  }
+}
+
+function searchLayers(query) {
+  const items = document.querySelectorAll('.layer-item');
+  items.forEach(item => {
+    const name = item.querySelector('.layer-name').textContent.toLowerCase();
+    item.style.display = name.includes(query.toLowerCase()) ? '' : 'none';
+  });
+}
+
+// ==================== IMPORT/EXPORT ====================
+function importGeoJSONFile() { openModal('importModal'); }
+function importGeoJSONUrl() { openModal('importModal'); }
+function importGeoJSONText() { openModal('importModal'); }
+
+function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    document.getElementById('importGeoJSONText').value = e.target.result;
+  };
+  reader.readAsText(file);
+}
+
+function processImport() {
+  const name = document.getElementById('importLayerName').value || `Импорт ${Date.now()}`;
+  let geojsonText = document.getElementById('importGeoJSONText').value.trim();
+  const url = document.getElementById('importGeoJSONUrl').value.trim();
+
+  const processGeoJSON = (text, layerName) => {
+    try {
+      const data = JSON.parse(text);
+      if (!data.type) throw new Error('Неверный формат');
+      createLayer(layerName, data);
+      zoomToLayer(layers[layers.length - 1].id);
+      showToast(`Слой "${layerName}" импортирован (${data.features?.length || 0} объектов)`, 'success');
+      logConsole(`Импортирован слой: ${layerName}, объектов: ${data.features?.length || 0}`);
+      saveLayers();
+    } catch (err) {
+      showToast('Ошибка парсинга GeoJSON: ' + err.message, 'error');
+    }
+  };
+
+  if (geojsonText) {
+    processGeoJSON(geojsonText, name);
+  } else if (url) {
+    fetch(url)
+      .then(r => r.text())
+      .then(text => processGeoJSON(text, name))
+      .catch(err => showToast('Ошибка загрузки: ' + err.message, 'error'));
+  } else {
+    showToast('Укажите файл, текст или URL', 'warning');
+  }
+
+  closeModal('importModal');
+  document.getElementById('importGeoJSONText').value = '';
+  document.getElementById('importGeoJSONUrl').value = '';
+  document.getElementById('importLayerName').value = '';
+}
+
+function exportAllGeoJSON() {
+  if (layers.length === 0) return showToast('Нет слоёв для экспорта', 'warning');
+
+  const combined = {
+    type: 'FeatureCollection',
+    features: [],
+    properties: { exported: new Date().toISOString(), layers: layers.map(l => l.name) }
+  };
+
+  layers.forEach(l => {
+    if (l.data && l.data.features) {
+      l.data.features.forEach(f => {
+        f.properties = f.properties || {};
+        f.properties._layer = l.name;
+        combined.features.push(f);
+      });
+    }
+  });
+
+  downloadGeoJSON(combined, 'all_layers.geojson');
+  showToast(`Экспортировано ${combined.features.length} объектов`, 'success');
+}
+
+function exportCurrentLayer() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+  downloadGeoJSON(layer.data, layer.name + '.geojson');
+  showToast(`Слой "${layer.name}" экспортирован`, 'success');
+}
+
+function downloadGeoJSON(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  saveAs(blob, filename);
+}
+
+// ==================== DRAWING ====================
+function startDraw(type) {
+  let handler;
+  switch (type) {
+    case 'polygon': handler = new L.Draw.Polygon(map); break;
+    case 'line': handler = new L.Draw.Polyline(map); break;
+    case 'marker': handler = new L.Draw.Marker(map); break;
+    case 'circle': handler = new L.Draw.Circle(map); break;
+    case 'rectangle': handler = new L.Draw.Rectangle(map); break;
+  }
+  if (handler) handler.enable();
+}
+
+function toggleEditing() {
+  if (map.editTools) {
+    map.editTools.disable();
+  } else {
+    drawnItems.editing.enable();
+    showToast('Режим редактирования включён', 'info');
+  }
+}
+
+function deleteSelectedFeatures() {
+  drawnItems.eachLayer(function(layer) {
+    // Delete all drawn items
+    drawnItems.removeLayer(layer);
+  });
+  // Reset layer data
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (layer) {
+    layer.data = { type: 'FeatureCollection', features: [] };
+    renderLayer(layer);
+    updateLayerList();
+  }
+  showToast('Все объекты удалены', 'warning');
+}
+
+function selectAllFeatures() {
+  showToast('Выделите объекты на карте', 'info');
+}
+
+function clearSelection() {
+  map.closePopup();
+}
+
+// ==================== STYLING ====================
+function updateLayerStyle() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return;
+
+  layer.style.color = document.getElementById('strokeColor').value;
+  layer.style.fillColor = document.getElementById('fillColor').value;
+  layer.style.weight = parseInt(document.getElementById('strokeWeight').value);
+  layer.style.fillOpacity = parseInt(document.getElementById('fillOpacity').value) / 100;
+  layer.style.dashArray = document.getElementById('dashArray').value;
+  layer.style.pointRadius = parseInt(document.getElementById('pointRadius').value);
+
+  document.getElementById('fillOpacityVal').textContent = layer.style.fillOpacity.toFixed(2);
+  renderLayer(layer);
+  updateLayerList();
+}
+
+function styleLayer() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+  // Styles are in the left panel
+  switchPanelTab('style', document.querySelectorAll('.panel-tab')[1]);
+}
+
+function applyChoropleth() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+
+  const field = document.getElementById('choroplethField').value;
+  const scheme = document.getElementById('choroplethScheme').value;
+  const classes = parseInt(document.getElementById('choroplethClasses').value);
+
+  if (!field) return showToast('Выберите поле', 'warning');
+
+  const values = layer.data.features
+    .map(f => f.properties?.[field])
+    .filter(v => v !== undefined && v !== null)
+    .map(Number)
+    .filter(v => !isNaN(v));
+
+  if (values.length === 0) return showToast('Нет числовых данных в поле', 'warning');
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const step = (max - min) / classes;
+
+  const colorSchemes = {
+    reds: ['#fee5d9', '#fcbba1', '#fc9272', '#fb6a4a', '#ef3b2c', '#cb181d', '#99000d'],
+    blues: ['#edf8fb', '#ccece6', '#99d8c9', '#66c2a4', '#41ae76', '#238b45', '#005824'],
+    greens: ['#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238443'],
+    purples: ['#fcfbfd', '#efedf5', '#dadaeb', '#bcbddc', '#9e9ac8', '#807dba', '#6a51a3'],
+    oranges: ['#fff5eb', '#fee6ce', '#fdd0a2', '#fdae6b', '#fd8d3c', '#f16913', '#d94801']
+  };
+
+  const colors = colorSchemes[scheme] || colorSchemes.reds;
+
+  layer.data.features.forEach(f => {
+    const val = f.properties?.[field];
+    if (val !== undefined) {
+      const num = Number(val);
+      if (!isNaN(num)) {
+        const idx = Math.min(Math.floor((num - min) / step), colors.length - 1);
+        f.properties._choroplethColor = colors[Math.max(0, idx)];
+      }
+    }
+  });
+
+  // Re-render with choropleth colors
+  if (layer.leafletLayer) map.removeLayer(layer.leafletLayer);
+
+  layer.leafletLayer = L.geoJSON(layer.data, {
+    style: function(feature) {
+      return {
+        color: feature.properties._choroplethColor || layer.style.color,
+        weight: layer.style.weight,
+        fillColor: feature.properties._choroplethColor || layer.style.fillColor,
+        fillOpacity: layer.style.fillOpacity,
+        dashArray: layer.style.dashArray
+      };
+    },
+    pointToLayer: function(feature, latlng) {
+      return L.circleMarker(latlng, {
+        radius: layer.style.pointRadius,
+        fillColor: feature.properties._choroplethColor || layer.style.fillColor,
+        color: feature.properties._choroplethColor || layer.style.color,
+        weight: layer.style.weight,
+        fillOpacity: layer.style.fillOpacity
+      });
+    }
+  });
+
+  layer.leafletLayer.addTo(map);
+  showToast(`Хороплет применён по полю "${field}"`, 'success');
+}
+
+function filterLayer() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+
+  const fields = new Set();
+  layer.data.features.forEach(f => {
+    if (f.properties) Object.keys(f.properties).forEach(k => fields.add(k));
+  });
+
+  document.getElementById('filterField').innerHTML =
+    '<option value="">— Выберите поле —</option>' +
+    [...fields].map(f => `<option value="${f}">${f}</option>`).join('');
+
+  openModal('filterModal');
+}
+
+function applyFilter() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return;
+
+  const field = document.getElementById('filterField').value;
+  const operator = document.getElementById('filterOperator').value;
+  const value = document.getElementById('filterValue').value;
+
+  if (!field) return showToast('Выберите поле', 'warning');
+
+  const allFeatures = layer._originalFeatures || layer.data.features;
+  if (!layer._originalFeatures) layer._originalFeatures = JSON.parse(JSON.stringify(layer.data.features));
+
+  const filtered = allFeatures.filter(f => {
+    const fv = f.properties?.[field];
+    if (fv === undefined) return false;
+
+    switch (operator) {
+      case '==': return String(fv) === value;
+      case '!=': return String(fv) !== value;
+      case '>': return Number(fv) > Number(value);
+      case '<': return Number(fv) < Number(value);
+      case '>=': return Number(fv) >= Number(value);
+      case '<=': return Number(fv) <= Number(value);
+      case 'contains': return String(fv).toLowerCase().includes(value.toLowerCase());
+      default: return true;
+    }
+  });
+
+  layer.data.features = filtered;
+  renderLayer(layer);
+  updateLayerList();
+  closeModal('filterModal');
+  showToast(`Фильтр применён: ${filtered.length} объектов`, 'success');
+}
+
+function clearFilter() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return;
+
+  if (layer._originalFeatures) {
+    layer.data.features = layer._originalFeatures;
+    delete layer._originalFeatures;
+    renderLayer(layer);
+    updateLayerList();
+  }
+
+  closeModal('filterModal');
+  showToast('Фильтр сброшен', 'info');
+}
+
+// ==================== ANALYSIS ====================
+function measureDistance() {
+  measureMode = 'distance';
+  measurePoints = [];
+  if (measureLayer) map.removeLayer(measureLayer);
+  measureLayer = L.layerGroup().addTo(map);
+  showToast('Кликайте на карте для измерения расстояния. Двойной клик — завершить.', 'info');
+  logConsole('Режим измерения расстояния');
+
+  map.once('dblclick', finishDistance);
+}
+
+function addMeasurePoint(latlng) {
+  measurePoints.push(latlng);
+
+  L.circleMarker(latlng, { radius: 4, color: '#e94560', fillColor: '#e94560', fillOpacity: 1 }).addTo(measureLayer);
+
+  if (measurePoints.length > 1) {
+    const pts = measurePoints.map(p => [p.lat, p.lng]);
+    L.polyline(pts, { color: '#e94560', weight: 2, dashArray: '5,5' }).addTo(measureLayer);
+  }
+}
+
+function finishDistance(e) {
+  if (measurePoints.length < 2) return;
+
+  const coords = measurePoints.map(p => [p.lng, p.lat]);
+  const line = turf.lineString(coords);
+  const dist = turf.length(line, { units: 'kilometers' });
+
+  document.getElementById('measureResult').style.display = 'block';
+  document.getElementById('measureResult').innerHTML =
+    `<i class="fas fa-ruler"></i> Расстояние: <b>${dist.toFixed(3)} км</b> (${(dist * 1000).toFixed(1)} м)`;
+
+  measureMode = null;
+  logConsole(`Измерено расстояние: ${dist.toFixed(3)} км`);
+}
+
+function measureArea() {
+  measureMode = 'area';
+  measurePoints = [];
+  if (measureLayer) map.removeLayer(measureLayer);
+  measureLayer = L.layerGroup().addTo(map);
+  showToast('Кликайте для создания полигона. Двойной клик — завершить.', 'info');
+
+  map.once('dblclick', finishArea);
+}
+
+function finishArea(e) {
+  if (measurePoints.length < 3) return;
+
+  const coords = measurePoints.map(p => [p.lng, p.lat]);
+  coords.push(coords[0]); // Close polygon
+  const polygon = turf.polygon([coords]);
+  const area = turf.area(polygon);
+
+  // Draw polygon
+  L.polygon(measurePoints, { color: '#00b894', fillColor: '#00b894', fillOpacity: 0.2 }).addTo(measureLayer);
+
+  document.getElementById('measureResult').style.display = 'block';
+  document.getElementById('measureResult').innerHTML =
+    `<i class="fas fa-ruler-combined"></i> Площадь: <b>${area.toFixed(2)} м²</b> (${(area / 1000000).toFixed(4)} км²)`;
+
+  measureMode = null;
+  logConsole(`Измерена площадь: ${area.toFixed(2)} м²`);
+}
+
+function bufferAnalysis() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+  if (layer.data.features.length === 0) return showToast('Слой пуст', 'warning');
+
+  document.getElementById('bufferSourceLayer').value = currentLayerId;
+  document.getElementById('bufferResultName').value = layer.name + ' (буфер)';
+  openModal('bufferModal');
+}
+
+function processBuffer() {
+  const sourceId = document.getElementById('bufferSourceLayer').value;
+  const radius = parseFloat(document.getElementById('bufferRadiusModal').value);
+  const resultName = document.getElementById('bufferResultName').value || 'Буфер';
+
+  const source = layers.find(l => l.id === sourceId);
+  if (!source) return showToast('Выберите исходный слой', 'warning');
+
+  try {
+    const fc = source.data;
+    const buffered = turf.buffer(fc, radius, { units: 'kilometers' });
+    createLayer(resultName, buffered, { color: '#00b894', fillOpacity: 0.2 });
+    showToast(`Буферная зона создана (${radius} км)`, 'success');
+    logConsole(`Буфер: ${radius} км, слой "${resultName}"`);
+  } catch (err) {
+    showToast('Ошибка буферизации: ' + err.message, 'error');
+  }
+
+  closeModal('bufferModal');
+}
+
+function unionAnalysis() {
+  const visibleLayers = layers.filter(l => l.data?.features?.length > 0);
+  if (visibleLayers.length < 2) return showToast('Нужно минимум 2 слоя с данными', 'warning');
+
+  try {
+    let result = visibleLayers[0].data;
+    for (let i = 1; i < visibleLayers.length; i++) {
+      result = turf.union(result, visibleLayers[i].data);
+    }
+    createLayer('Union', result, { color: '#74b9ff', fillOpacity: 0.3 });
+    showToast('Объединение выполнено', 'success');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function intersectionAnalysis() {
+  const visibleLayers = layers.filter(l => l.data?.features?.length > 0);
+  if (visibleLayers.length < 2) return showToast('Нужно минимум 2 слоя', 'warning');
+
+  try {
+    let result = visibleLayers[0].data;
+    for (let i = 1; i < visibleLayers.length; i++) {
+      result = turf.intersect(result, visibleLayers[i].data);
+    }
+    createLayer('Intersection', result, { color: '#fdcb6e', fillOpacity: 0.4 });
+    showToast('Пересечение выполнено', 'success');
+  } catch (err) {
+    showToast('Ошибка пересечения: ' + err.message, 'error');
+  }
+}
+
+function differenceAnalysis() {
+  const visibleLayers = layers.filter(l => l.data?.features?.length > 0);
+  if (visibleLayers.length < 2) return showToast('Нужно минимум 2 слоя', 'warning');
+
+  try {
+    let result = visibleLayers[0].data;
+    for (let i = 1; i < visibleLayers.length; i++) {
+      result = turf.difference(result, visibleLayers[i].data);
+    }
+    createLayer('Difference', result, { color: '#d63031', fillOpacity: 0.3 });
+    showToast('Разность вычислена', 'success');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function centroidAnalysis() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+
+  try {
+    const centroids = turf.centroid(layer.data);
+    createLayer(layer.name + ' (центроиды)', centroids, { color: '#d63031', pointRadius: 8 });
+    showToast('Центроиды созданы', 'success');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function convexHullAnalysis() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+
+  try {
+    const hull = turf.convex(layer.data);
+    createLayer(layer.name + ' (выпуклая оболочка)', hull, { color: '#a29bfe', fillOpacity: 0.2 });
+    showToast('Выпуклая оболочка создана', 'success');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function bboxAnalysis() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+
+  try {
+    const bbox = turf.bbox(layer.data);
+    const bboxPoly = turf.bboxPolygon(bbox);
+    createLayer(layer.name + ' (BBOX)', bboxPoly, { color: '#fd79a8', fillOpacity: 0.1, dashArray: '5,5' });
+    showToast('BBOX создан', 'success');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function dissolveAnalysis() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+
+  try {
+    const dissolved = turf.dissolve(layer.data);
+    createLayer(layer.name + ' (dissolve)', dissolved, { color: '#00cec9', fillOpacity: 0.3 });
+    showToast('Dissolve выполнен', 'success');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function voronoiAnalysis() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+
+  try {
+    const points = layer.data.features.filter(f => f.geometry?.type === 'Point');
+    if (points.length < 3) return showToast('Нужно минимум 3 точки', 'warning');
+
+    const bbox = turf.bbox(layer.data);
+    const voronoi = turf.voronoi(points, { bbox });
+    createLayer(layer.name + ' (Вороного)', voronoi, { color: '#6c5ce7', fillOpacity: 0.15 });
+    showToast('Диаграмма Вороного создана', 'success');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function tinAnalysis() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+
+  try {
+    const points = layer.data.features.filter(f => f.geometry?.type === 'Point');
+    if (points.length < 3) return showToast('Нужно минимум 3 точки', 'warning');
+
+    const tin = turf.tin(points);
+    createLayer(layer.name + ' (TIN)', tin, { color: '#00b894', fillOpacity: 0.2 });
+    showToast('TIN триангуляция создана', 'success');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function nearestAnalysis() {
+  const visibleLayers = layers.filter(l => l.data?.features?.length > 0);
+  if (visibleLayers.length < 2) return showToast('Нужно минимум 2 слоя', 'warning');
+
+  try {
+    const refLayer = visibleLayers[0];
+    const targetLayer = visibleLayers[1];
+
+    const refPoints = refLayer.data.features.filter(f => f.geometry?.type === 'Point');
+    const targetPoints = targetLayer.data.features.filter(f => f.geometry?.type === 'Point');
+
+    if (refPoints.length === 0 || targetPoints.length === 0) {
+      return showToast('Оба слоя должны содержать точки', 'warning');
+    }
+
+    const results = [];
+    refPoints.forEach(ref => {
+      let minDist = Infinity;
+      let nearest = null;
+      targetPoints.forEach(tgt => {
+        const dist = turf.distance(ref, tgt);
+        if (dist < minDist) {
+          minDist = dist;
+          nearest = JSON.parse(JSON.stringify(tgt));
+          nearest.properties._nearestDist = minDist;
+        }
+      });
+      if (nearest) results.push(nearest);
+    });
+
+    createLayer('Ближайшие объекты', {
+      type: 'FeatureCollection',
+      features: results
+    }, { color: '#e17055', pointRadius: 6 });
+
+    showToast(`Найдено ${results.length} ближайших объектов`, 'success');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function pointOnSurface() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+
+  try {
+    const point = turf.pointOnFeature(layer.data);
+    createLayer(layer.name + ' (точка внутри)', {
+      type: 'FeatureCollection',
+      features: [point]
+    }, { color: '#d63031', pointRadius: 10 });
+    showToast('Точка внутри полигона найдена', 'success');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+// ==================== STATISTICS ====================
+function layerStatistics() {
+  const layer = layers.find(l => l.id === currentLayerId);
+  if (!layer) return showToast('Выберите слой', 'warning');
+
+  const fc = layer.data;
+  const features = fc.features;
+  const total = features.length;
+
+  const types = {};
+  features.forEach(f => {
+    const t = f.geometry?.type || 'Unknown';
+    types[t] = (types[t] || 0) + 1;
+  });
+
+  const bbox = turf.bbox(fc);
+  const area = turf.area(fc);
+  const center = turf.center(fc);
+
+  // Numeric field statistics
+  const numericFields = {};
+  features.forEach(f => {
+    if (f.properties) {
+      Object.entries(f.properties).forEach(([key, val]) => {
+        if (typeof val === 'number') {
+          if (!numericFields[key]) numericFields[key] = [];
+          numericFields[key].push(val);
+        }
+      });
+    }
+  });
+
+  let statsHTML = `
+    <div style="margin-bottom:15px;">
+      <h4 style="color:var(--accent);margin-bottom:8px;">Общая информация</h4>
+      <table style="width:100%;font-size:13px;">
+        <tr><td style="color:var(--text-dim);padding:4px 8px;">Объектов:</td><td><b>${total}</b></td></tr>
+        <tr><td style="color:var(--text-dim);padding:4px 8px;">Типы геометрий:</td><td>${Object.entries(types).map(([k,v]) => `${k}: ${v}`).join(', ')}</td></tr>
+        <tr><td style="color:var(--text-dim);padding:4px 8px;">Площадь:</td><td>${(area / 1000000).toFixed(2)} км²</td></tr>
+        <tr><td style="color:var(--text-dim);padding:4px 8px;">Центр:</td><td>${center.geometry.coordinates[1].toFixed(4)}, ${center.geometry.coordinates[0].toFixed(4)}</td></tr>
+        <tr><td style="color:var(--text-dim);padding:4px 8px;">BBOX:</td><td>${bbox.map(v => v.toFixed(4)).join(', ')}</td></tr>
+      </table>
+    </div>
+  `;
+
+  if (Object.keys(numericFields).length > 0) {
+    statsHTML += '<h4 style="color:var(--accent);margin-bottom:8px;">Числовые поля</h4>';
+    Object.entries(numericFields).forEach(([field, values]) => {
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const sum = values.reduce((a, b) => a + b, 0);
+      const avg = sum / values.length;
+      const stdDev = Math.sqrt(values.reduce((s, v) => s + (v - avg) ** 2, 0) / values.length);
+
+      statsHTML += `
+        <div style="background:var(--bg-dark);border-radius:var(--radius);padding:10px;margin-bottom:8px;">
+          <b>${field}</b><br>
+          <span style="font-size:12px;color:var(--text-dim);">
+            Min: ${min.toFixed(2)} | Max: ${max.toFixed(2)} | Avg: ${avg.toFixed(2)} | Σ: ${sum.toFixed(2)} | σ: ${stdDev.toFixed(2)} | n: ${values.length}
+          </span>
+        </div>
+      `;
+    });
+  }
+
+  document.getElementById('statsModalBody').innerHTML = statsHTML;
+  openModal('statsModal');
+}
+
+function countFeatures() {
+  let total = 0;
+  layers.forEach(l => total += l.data?.features?.length || 0);
+  showToast(`Всего объектов: ${total} в ${layers.length} слоях`, 'info');
+}
+
+// ==================== ATTRIBUTE TABLE ====================
+function showAttributeTable() {
+  const layerId = document.getElementById('attrLayerSelect').value;
+  const layer = layers.find(l => l.id === layerId);
+  if (!layer) {
+    document.getElementById('attrTableContainer').innerHTML =
+      '<p style="color:var(--text-dim);text-align:center;padding:20px;">Выберите слой</p>';
+    return;
+  }
+
+  const features = layer.data.features;
+  if (features.length === 0) {
+    document.getElementById('attrTableContainer').innerHTML =
+      '<p style="color:var(--text-dim);text-align:center;padding:20px;">Слой пуст</p>';
+    return;
+  }
+
+  // Collect all property keys
+  const allKeys = new Set();
+  features.forEach(f => {
+    if (f.properties) Object.keys(f.properties).forEach(k => allKeys.add(k));
+  });
+  allKeys.add('_geometry_type');
+
+  const keys = [...allKeys];
+
+  let html = '<table class="attr-table"><thead><tr><th>#</th>';
+  keys.forEach(k => html += `<th>${k}</th>`);
+  html += '</tr></thead><tbody>';
+
+  features.forEach((f, i) => {
+    html += `<tr onclick="highlightFeature(${i}, '${layer.id}')">`;
+    html += `<td>${i + 1}</td>`;
+    keys.forEach(k => {
+      const val = k === '_geometry_type' ? f.geometry?.type : f.properties?.[k];
+      html += `<td>${val !== undefined ? val : '—'}</td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('attrTableContainer').innerHTML = html;
+}
+
+function filterAttributeTable() {
+  const query = document.getElementById('attrSearch').value.toLowerCase();
+  const rows = document.querySelectorAll('.attr-table tbody tr');
+  rows.forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = text.includes(query) ? '' : 'none';
+  });
+}
+
+function highlightFeature(index, layerId) {
+  const layer = layers.find(l => l.id === layerId);
+  if (!layer) return;
+
+  const feature = layer.data.features[index];
+  if (!feature) return;
+
+  // Highlight on map
+  if (layer.leafletLayer) {
+    layer.leafletLayer.eachLayer(function(l, i) {
+      if (i === index) {
+        if (l.setStyle) l.setStyle({ weight: 4, color: '#e94560' });
+        l.openPopup();
+      } else {
+        if (l.setStyle) l.setStyle({ weight: layer.style.weight || 2, color: layer.style.color });
+      }
+    });
+  }
+
+  // Zoom to feature
+  if (layer.leafletLayer) {
+    const fl = layer.leafletLayer.getLayers()[index];
+    if (fl) {
+      if (fl.getBounds) map.fitBounds(fl.getBounds().pad(0.1));
+      else if (fl.getLatLng) map.setView(fl.getLatLng(), 14);
+    }
+  }
+}
+
+// ==================== FEATURE INFO ====================
+function showFeatureInfo(feature, latlng) {
+  const props = feature.properties || {};
+  let html = '<div class="feature-popup">';
+  html += `<h4 style="margin-bottom:8px;color:var(--accent);">${feature.geometry?.type || 'Feature'}</h4>`;
+  html += '<table>';
+  html += `<tr><td>Lat</td><td>${latlng.lat.toFixed(6)}</td></tr>`;
+  html += `<tr><td>Lon</td><td>${latlng.lng.toFixed(6)}</td></tr>`;
+  for (const [key, val] of Object.entries(props)) {
+    if (key !== '_choroplethColor') {
+      html += `<tr><td>${key}</td><td>${val}</td></tr>`;
+    }
+  }
+  html += '</table></div>';
+
+  document.getElementById('featureInfoContent').innerHTML = html;
+  switchRightTab('featureInfo', document.querySelectorAll('.right-panel .panel-tab')[1]);
+}
+
+// ==================== CRS & COORDINATE TRANSFORM ====================
+function setCRS(crs) {
+  document.getElementById('crsDisplay').textContent = crs;
+  showToast(`CRS изменён на ${crs}`, 'info');
+  logConsole(`CRS: ${crs}`);
+}
+
+function transformCoordinates() { openModal('transformModal'); }
+
+function processTransform() {
+  const x = parseFloat(document.getElementById('transformX').value);
+  const y = parseFloat(document.getElementById('transformY').value);
+  const from = document.getElementById('transformFromCRS').value;
+  const to = document.getElementById('transformToCRS').value;
+
+  if (isNaN(x) || isNaN(y)) return showToast('Введите координаты', 'warning');
+
+  try {
+    proj4.defs('EPSG:4326', '+proj=longlat +datum=WGS84 +no_defs');
+    proj4.defs('EPSG:3857', '+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext  +no_defs');
+
+    const result = proj4(proj4.defs(from), proj4.defs(to), [x, y]);
+    const output = document.getElementById('transformOutput');
+    output.style.display = 'block';
+    output.innerHTML = `
+      <div><b>Результат (${to}):</b></div>
+      <div>X: ${result[0].toFixed(6)}</div>
+      <div>Y: ${result[1].toFixed(6)}</div>
+    `;
+    logConsole(`Трансформация: ${from} → ${to}: (${x}, ${y}) → (${result[0].toFixed(4)}, ${result[1].toFixed(4)})`);
+  } catch (err) {
+    showToast('Ошибка трансформации: ' + err.message, 'error');
+  }
+}
+
+// ==================== MAP TOOLS ====================
+function zoomIn() { map.zoomIn(); }
+function zoomOut() { map.zoomOut(); }
+
+function zoomToAll() {
+  if (layers.length === 0) return;
+  const allFeatures = { type: 'FeatureCollection', features: [] };
+  layers.forEach(l => {
+    if (l.data?.features) allFeatures.features = allFeatures.features.concat(l.data.features);
+  });
+  if (allFeatures.features.length > 0) {
+    const layer = L.geoJSON(allFeatures);
+    map.fitBounds(layer.getBounds().pad(0.1));
+  }
+}
+
+function zoomToLayer(layerId) {
+  const layer = layers.find(l => l.id === layerId);
+  if (!layer || !layer.leafletLayer) return;
+  try {
+    map.fitBounds(layer.leafletLayer.getBounds().pad(0.1));
+  } catch (e) {}
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+function toggleLeftPanel() {
+  const panel = document.getElementById('leftPanel');
+  panel.classList.toggle('collapsed');
+  const icon = document.getElementById('leftToggleIcon');
+  icon.className = panel.classList.contains('collapsed') ? 'fas fa-chevron-right' : 'fas fa-chevron-left';
+  setTimeout(() => map.invalidateSize(), 350);
+}
+
+function toggleRightPanel() {
+  const panel = document.getElementById('rightPanel');
+  panel.classList.toggle('collapsed');
+  const icon = document.getElementById('rightToggleIcon');
+  icon.className = panel.classList.contains('collapsed') ? 'fas fa-chevron-left' : 'fas fa-chevron-right';
+  setTimeout(() => map.invalidateSize(), 350);
+}
+
+function toggleBottomPanel() {
+  document.getElementById('bottomPanel').classList.toggle('open');
+  setTimeout(() => map.invalidateSize(), 350);
+}
+
+function printMap() {
+  window.print();
+}
+
+function exportMapImage() {
+  showToast('Используйте скриншот для экспорта карты', 'info');
+}
+
+// ==================== GRATICULE ====================
+function addGraticule() {
+  if (graticuleLayer) {
+    map.removeLayer(graticuleLayer);
+    graticuleLayer = null;
+    showToast('Координатная сетка удалена', 'info');
+    return;
+  }
+
+  graticuleLayer = L.layerGroup().addTo(map);
+  const z = map.getZoom();
+  const step = z > 10 ? 0.1 : z > 7 ? 0.5 : z > 4 ? 1 : 5;
+
+  const bounds = map.getBounds();
+  for (let lat = Math.floor(bounds.getSouth() / step) * step; lat <= bounds.getNorth(); lat += step) {
+    L.polyline([[lat, bounds.getWest()], [lat, bounds.getEast()]], {
+      color: 'rgba(255,255,255,0.2)', weight: 1, dashArray: '4,4'
+    }).addTo(graticuleLayer);
+  }
+  for (let lon = Math.floor(bounds.getWest() / step) * step; lon <= bounds.getEast(); lon += step) {
+    L.polyline([[bounds.getSouth(), lon], [bounds.getNorth(), lon]], {
+      color: 'rgba(255,255,255,0.2)', weight: 1, dashArray: '4,4'
+    }).addTo(graticuleLayer);
+  }
+
+  showToast('Координатная сетка добавлена', 'success');
+}
+
+function addScaleBar() {
+  showToast('Масштабная линейка уже отображается (нижний левый угол)', 'info');
+}
+
+function addNorthArrow() {
+  const northArrow = L.control({ position: 'topright' });
+  northArrow.onAdd = function() {
+    const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+    div.innerHTML = '<div style="background:rgba(22,33,62,0.9);padding:10px 14px;border-radius:8px;cursor:pointer;font-size:20px;color:var(--accent);">🧭 N</div>';
+    return div;
+  };
+  northArrow.addTo(map);
+  showToast('Северная стрелка добавлена', 'success');
+}
+
+// ==================== SEARCH & GEOCODING ====================
+function geocodeSearch() { openModal('searchModal'); }
+
+function geocodeAddress() {
+  const query = document.getElementById('geocodeInput').value;
+  if (!query) return;
+
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`)
+    .then(r => r.json())
+    .then(results => {
+      if (results.length === 0) return showToast('Ничего не найдено', 'warning');
+
+      results.forEach(r => {
+        const lat = parseFloat(r.lat);
+        const lon = parseFloat(r.lon);
+        L.marker([lat, lon]).addTo(map)
+          .bindPopup(`<b>${r.display_name}</b>`)
+          .openPopup();
+      });
+
+      map.setView([parseFloat(results[0].lat), parseFloat(results[0].lon)], 12);
+      showToast(`Найдено ${results.length} результатов`, 'success');
+    })
+    .catch(err => showToast('Ошибка поиска: ' + err.message, 'error'));
+}
+
+function performSearch() {
+  const query = document.getElementById('searchQuery').value;
+  if (!query) return;
+
+  document.getElementById('geocodeInput').value = query;
+  closeModal('searchModal');
+  geocodeAddress();
+}
+
+// ==================== GPS ====================
+function toggleGPS() {
+  const btn = document.getElementById('gpsBtn');
+  const info = document.getElementById('gpsInfo');
+
+  if (gpsWatchId) {
+    navigator.geolocation.clearWatch(gpsWatchId);
+    gpsWatchId = null;
+    btn.innerHTML = '<i class="fas fa-satellite-dish"></i> Включить GPS';
+    btn.classList.remove('btn-danger');
+    btn.classList.add('btn-success');
+    info.style.display = 'none';
+    showToast('GPS отключён', 'info');
+    return;
+  }
+
+  if (!navigator.geolocation) return showToast('GPS не поддерживается', 'error');
+
+  btn.innerHTML = '<i class="fas fa-stop"></i> Остановить GPS';
+  btn.classList.remove('btn-success');
+  btn.classList.add('btn-danger');
+  info.style.display = 'block';
+
+  gpsWatchId = navigator.geolocation.watchPosition(
+    function(pos) {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      const acc = pos.coords.accuracy;
+
+      document.getElementById('gpsLat').textContent = lat.toFixed(6);
+      document.getElementById('gpsLon').textContent = lon.toFixed(6);
+      document.getElementById('gpsAcc').textContent = acc.toFixed(1) + ' м';
+
+      map.setView([lat, lon], map.getZoom());
+      L.circleMarker([lat, lon], {
+        radius: 8, color: '#e94560', fillColor: '#e94560', fillOpacity: 1
+      }).addTo(drawnItems);
+    },
+    function(err) {
+      showToast('Ошибка GPS: ' + err.message, 'error');
+    },
+    { enableHighAccuracy: true, maximumAge: 1000 }
+  );
+
+  showToast('GPS включён', 'success');
+}
+
+// ==================== BOOKMARKS ====================
+function addBookmark() {
+  const name = prompt('Имя закладки:');
+  if (!name) return;
+
+  const bookmark = {
+    name,
+    center: map.getCenter(),
+    zoom: map.getZoom(),
+    created: new Date().toISOString()
+  };
+
+  bookmarks.push(bookmark);
+  saveBookmarks();
+  renderBookmarks();
+  showToast(`Закладка "${name}" создана`, 'success');
+}
+
+function saveBookmarks() {
+  localStorage.setItem('geoweb_bookmarks_' + (DB.getCurrentUser()?.id || 'anon'), JSON.stringify(bookmarks));
+}
+
+function loadBookmarks() {
+  bookmarks = JSON.parse(localStorage.getItem('geoweb_bookmarks_' + (DB.getCurrentUser()?.id || 'anon')) || '[]');
+  renderBookmarks();
+}
+
+function renderBookmarks() {
+  const container = document.getElementById('bookmarksList');
+  if (bookmarks.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-dim);font-size:12px;text-align:center;">Нет закладок</p>';
+    return;
+  }
+
+  container.innerHTML = bookmarks.map((b, i) => `
+    <div class="bookmark-item" onclick="goToBookmark(${i})">
+      <i class="fas fa-bookmark" style="color:var(--warning)"></i>
+      <span style="flex:1;">${b.name}</span>
+      <button onclick="event.stopPropagation();removeBookmark(${i})" style="background:none;border:none;color:var(--text-dim);cursor:pointer;">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+  `).join('');
+}
+
+function goToBookmark(index) {
+  const b = bookmarks[index];
+  if (b) {
+    map.setView(b.center, b.zoom);
+    showToast(`Переход к "${b.name}"`, 'info');
+  }
+}
+
+function removeBookmark(index) {
+  bookmarks.splice(index, 1);
+  saveBookmarks();
+  renderBookmarks();
+}
+
+// ==================== SAVE/LOAD LAYERS ====================
+function saveLayers() {
+  const userId = DB.getCurrentUser()?.id || 'anon';
+  const saveData = layers.map(l => ({
+    id: l.id,
+    name: l.name,
+    data: l.data,
+    style: l.style,
+    visible: l.visible,
+    opacity: l.opacity,
+    created: l.created
+  }));
+  localStorage.setItem('geoweb_layers_' + userId, JSON.stringify(saveData));
+}
+
+function loadSavedLayers() {
+  const userId = DB.getCurrentUser()?.id || 'anon';
+  const saveData = JSON.parse(localStorage.getItem('geoweb_layers_' + userId) || '[]');
+  saveData.forEach(sd => {
+    const layer = {
+      ...sd,
+      leafletLayer: null
+    };
+    layers.push(layer);
+    renderLayer(layer);
+  });
+  if (layers.length > 0) {
+    currentLayerId = layers[0].id;
+    selectLayer(currentLayerId);
+  }
+}
+
+// Auto-save every 30 seconds
+setInterval(() => {
+  if (DB.getCurrentUser()) saveLayers();
+}, 30000);
+
+// ==================== UI HELPERS ====================
+function switchPanelTab(tab, el) {
+  document.querySelectorAll('.left-panel .panel-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.left-panel .panel-section').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(tab + 'Tab').classList.add('active');
+}
+
+function switchRightTab(tab, el) {
+  document.querySelectorAll('.right-panel .panel-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.right-panel .panel-section').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(tab + 'Tab').classList.add('active');
+}
+
+function openModal(id) {
+  document.getElementById(id).classList.add('active');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('active');
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('active');
+  });
+});
+
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+
+  const icons = {
+    success: 'fa-check-circle',
+    error: 'fa-exclamation-circle',
+    warning: 'fa-exclamation-triangle',
+    info: 'fa-info-circle'
+  };
+
+  toast.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i> ${message}`;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(100%)';
+    toast.style.transition = 'all 0.3s';
+    setTimeout(() => toast.remove(), 300);
+  }, 4000);
+}
+
+function logConsole(message) {
+  const time = new Date().toLocaleTimeString();
+  const entry = document.createElement('div');
+  entry.style.marginBottom = '4px';
+  entry.innerHTML = `<span style="color:var(--text-dim);">[${time}]</span> ${message}`;
+
+  const outputs = [document.getElementById('consoleOutput'), document.getElementById('bottomConsole')];
+  outputs.forEach(output => {
+    if (output) {
+      output.appendChild(entry.cloneNode(true));
+      output.scrollTop = output.scrollHeight;
+    }
+  });
+}
+
+function randomColor() {
+  const colors = ['#e94560', '#533483', '#0f3460', '#00b894', '#fdcb6e', '#74b9ff', '#a29bfe', '#fd79a8', '#00cec9', '#e17055', '#6c5ce7', '#d63031'];
+  return colors[Math.floor(Math.random() * colors.length)];
+}
+
+// ==================== KEYBOARD SHORTCUTS ====================
+document.addEventListener('keydown', function(e) {
+  if (e.ctrlKey || e.metaKey) {
+    switch(e.key) {
+      case 'o':
+        e.preventDefault();
+        importGeoJSONFile();
+        break;
+      case 's':
+        e.preventDefault();
+        saveLayers();
+        showToast('Проект сохранён', 'success');
+        break;
+      case 'e':
+        e.preventDefault();
+        exportAllGeoJSON();
+        break;
+      case 'f':
+        e.preventDefault();
+        toggleFullscreen();
+        break;
+    }
+  }
+
+  if (e.key === 'Escape') {
+    if (measureMode) {
+      measureMode = null;
+      if (measureLayer) map.removeLayer(measureLayer);
+      showToast('Измерение отменено', 'info');
+    }
+    document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+  }
+});
+
+// ==================== CONTEXT MENU ====================
+map && map.on && document.addEventListener('contextmenu', function(e) {
+  // Custom context menu could be added here
+});
+
+// ==================== DRAG & DROP IMPORT ====================
+document.addEventListener('dragover', function(e) {
+  e.preventDefault();
+  e.stopPropagation();
+});
+
+document.addEventListener('drop', function(e) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    const file = files[0];
+    if (file.name.endsWith('.json') || file.name.endsWith('.geojson')) {
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        document.getElementById('importGeoJSONText').value = ev.target.result;
+        document.getElementById('importLayerName').value = file.name.replace(/\.(json|geojson)$/, '');
+        processImport();
+      };
+      reader.readAsText(file);
+    } else {
+      showToast('Поддерживаются только .json и .geojson файлы', 'warning');
+    }
+  }
+});
+
+// ==================== SAMPLE DATA ====================
+function loadSampleData() {
+  const sampleData = {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": { "name": "Москва", "population": 12632409, "country": "Россия" },
+        "geometry": { "type": "Point", "coordinates": [37.6173, 55.7558] }
+      },
+      {
+        "type": "Feature",
+        "properties": { "name": "Санкт-Петербург", "population": 5383890, "country": "Россия" },
+        "geometry": { "type": "Point", "coordinates": [30.3351, 59.9343] }
+      },
+      {
+        "type": "Feature",
+        "properties": { "name": "Новосибирск", "population": 1612833, "country": "Россия" },
+        "geometry": { "type": "Point", "coordinates": [82.9346, 55.0084] }
+      },
+      {
+        "type": "Feature",
+        "properties": { "name": "Екатеринбург", "population": 1493749, "country": "Россия" },
+        "geometry": { "type": "Point", "coordinates": [60.6122, 56.8389] }
+      },
+      {
+        "type": "Feature",
+        "properties": { "name": "Казань", "population": 1257391, "country": "Россия" },
+        "geometry": { "type": "Point", "coordinates": [49.1221, 55.7887] }
+      },
+      {
+        "type": "Feature",
+        "properties": { "name": "Полигон Москва", "area_km2": 2511 },
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[[37.3, 55.5], [37.9, 55.5], [37.9, 55.9], [37.3, 55.9], [37.3, 55.5]]]
+        }
+      }
+    ]
+  };
+
+  createLayer('Города России', sampleData, { color: '#e94560', pointRadius: 8 });
+  showToast('Демо-данные загружены', 'success');
+}
+
+// Show welcome toast after init
+setTimeout(() => {
+  if (DB.getCurrentUser()) {
+    showToast('Добро пожаловать в GeoWeb Pro!', 'success');
+    showToast('Drag & Drop .geojson файлов на карту для импорта', 'info');
+    showToast('Ctrl+O — импорт, Ctrl+S — сохранить, Ctrl+E — экспорт', 'info');
+  }
+}, 2000);
+</script>
+
+</body>
+</html>
