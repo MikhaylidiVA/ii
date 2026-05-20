@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>QGIS-Web — GeoGIS Platform</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Leaflet Geoman (редактирование геометрий) -->
+<link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css"/>
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js"></script>
+
+<!-- Turf.js (геоаналитика) -->
+<script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+
+<!-- Leaflet Measure -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/ljagis/leaflet-measure@3.0.0/dist/leaflet-measure.css"/>
+<script src="https://cdn.jsdelivr.net/gh/ljagis/leaflet-measure@3.0.0/dist/leaflet-measure.min.js"></script>
+
+<style>
+:root{
+  --bg:#1e1e2e; --panel:#282a36; --panel2:#2f3242; --accent:#8be9fd;
+  --accent2:#50fa7b; --text:#f8f8f2; --muted:#6272a4; --danger:#ff5555;
+  --border:#44475a; --yellow:#f1fa8c;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);overflow:hidden}
+#app{display:flex;flex-direction:column;height:100vh}
+
+/* TOP BAR */
+header{background:linear-gradient(90deg,#14141e,#1e1e2e);padding:8px 14px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border);z-index:1000}
+header .logo{font-weight:700;font-size:18px;color:var(--accent);letter-spacing:1px}
+header .logo span{color:var(--accent2)}
+header .user{margin-left:auto;display:flex;gap:8px;align-items:center}
+header button{background:var(--panel2);color:var(--text);border:1px solid var(--border);padding:5px 12px;border-radius:4px;cursor:pointer;font-size:12px;transition:.2s}
+header button:hover{background:var(--accent);color:#000;border-color:var(--accent)}
+
+/* MAIN */
+main{flex:1;display:flex;overflow:hidden}
+aside{width:280px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.tabs{display:flex;border-bottom:1px solid var(--border)}
+.tabs button{flex:1;background:none;border:none;color:var(--muted);padding:10px 5px;cursor:pointer;font-size:11px;border-bottom:2px solid transparent}
+.tabs button.active{color:var(--accent);border-color:var(--accent);background:var(--panel2)}
+.tab-content{flex:1;overflow-y:auto;padding:10px}
+.tab-content:not(.active){display:none}
+
+section.panel{background:var(--panel2);border:1px solid var(--border);border-radius:6px;margin-bottom:10px;padding:10px}
+section.panel h3{margin:0 0 8px;font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:1px}
+section.panel label{font-size:11px;color:var(--muted);display:block;margin:6px 0 3px}
+section.panel input,section.panel select,section.panel textarea{
+  width:100%;background:#1e1e2e;color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px;font-size:12px;font-family:inherit
+}
+section.panel textarea{min-height:80px;font-family:'Consolas',monospace}
+section.panel button, .btn{
+  width:100%;background:var(--accent);color:#000;border:none;padding:7px;border-radius:4px;cursor:pointer;font-weight:600;font-size:12px;margin-top:6px
+}
+section.panel button.secondary,.btn.secondary{background:var(--panel);color:var(--text);border:1px solid var(--border)}
+section.panel button.danger,.btn.danger{background:var(--danger);color:#fff}
+section.panel button:hover{filter:brightness(1.15)}
+
+.layer-item{display:flex;align-items:center;gap:6px;padding:6px;background:#1e1e2e;border:1px solid var(--border);border-radius:4px;margin-bottom:5px;font-size:11px;cursor:pointer}
+.layer-item:hover{border-color:var(--accent)}
+.layer-item.active{border-color:var(--accent2);background:#243a2f}
+.layer-item input[type=checkbox]{accent-color:var(--accent2)}
+.layer-item .lname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.layer-item .actions{display:flex;gap:3px}
+.layer-item .actions button{width:22px;height:22px;padding:0;background:var(--panel);border:1px solid var(--border);border-radius:3px;color:var(--text);cursor:pointer;font-size:11px}
+
+#map{flex:1;background:#111}
+.leaflet-container{background:#111}
+
+/* STATUS BAR */
+footer{background:var(--panel);border-top:1px solid var(--border);padding:4px 14px;font-size:11px;color:var(--muted);display:flex;gap:20px}
+footer span b{color:var(--accent)}
+
+/* MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:24px;min-width:340px;max-width:600px;max-height:80vh;overflow-y:auto}
+.modal h2{margin:0 0 15px;color:var(--accent)}
+.modal table{width:100%;border-collapse:collapse;font-size:12px}
+.modal th,.modal td{border:1px solid var(--border);padding:5px 8px;text-align:left}
+.modal th{background:var(--panel2);color:var(--accent)}
+
+/* TOAST */
+#toast{position:fixed;bottom:40px;right:20px;z-index:10000;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--panel2);border-left:4px solid var(--accent);padding:10px 16px;border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,.5);font-size:12px;animation:slide .3s}
+.toast.error{border-color:var(--danger)}
+.toast.success{border-color:var(--accent2)}
+@keyframes slide{from{transform:translateX(100%);opacity:0}}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo">QGIS<span>-Web</span></div>
+    <button onclick="newProject()">📄 Новый</button>
+    <button onclick="document.getElementById('file-inp').click()">📂 Открыть GeoJSON</button>
+    <input type="file" id="file-inp" accept=".geojson,.json" multiple style="display:none" onchange="loadFiles(event)">
+    <button onclick="promptUrlLoad()">🌐 Из URL</button>
+    <button onclick="exportAll()">💾 Экспорт</button>
+    <button onclick="saveProject()">💽 Сохранить проект</button>
+    <button onclick="loadProject()">📁 Загрузить проект</button>
+    <div class="user">
+      <span id="user-info">Гость</span>
+      <button id="auth-btn" onclick="showAuth()">🔐 Войти</button>
+    </div>
+  </header>
+
+  <main>
+    <aside>
+      <div class="tabs">
+        <button class="active" onclick="switchTab('layers',this)">🗂 Слои</button>
+        <button onclick="switchTab('tools',this)">🛠 Анализ</button>
+        <button onclick="switchTab('style',this)">🎨 Стиль</button>
+        <button onclick="switchTab('data',this)">📊 Атрибуты</button>
+      </div>
+
+      <!-- LAYERS -->
+      <div class="tab-content active" id="tab-layers">
+        <section class="panel">
+          <h3>Базовые карты</h3>
+          <label>Слой подложки</label>
+          <select id="base-select" onchange="changeBase(this.value)">
+            <option value="osm">OpenStreetMap</option>
+            <option value="sat">Спутник (Esri)</option>
+            <option value="topo">Топографическая</option>
+            <option value="dark">Тёмная (CartoDB)</option>
+            <option value="light">Светлая (CartoDB)</option>
+            <option value="terrain">Рельеф (Stamen)</option>
+          </select>
+        </section>
+
+        <section class="panel">
+          <h3>Слои (<span id="layer-count">0</span>)</h3>
+          <div id="layer-list"></div>
+          <button class="secondary" onclick="addEmptyLayer()">➕ Пустой слой</button>
+        </section>
+
+        <section class="panel">
+          <h3>Навигация</h3>
+          <button class="secondary" onclick="map.setView([55.75,37.62],5)">🇷🇺 Россия</button>
+          <button class="secondary" onclick="map.setView([20,0],2)">🌍 Мир</button>
+          <button class="secondary" onclick="fitAll()">🎯 Показать всё</button>
+        </section>
+      </div>
+
+      <!-- TOOLS -->
+      <div class="tab-content" id="tab-tools">
+        <section class="panel">
+          <h3>Буферная зона</h3>
+          <label>Слой</label>
+          <select id="buf-layer"></select>
+          <label>Радиус (км)</label>
+          <input type="number" id="buf-radius" value="10" step="0.1">
+          <button onclick="createBuffer()">🟠 Создать буфер</button>
+        </section>
+
+        <section class="panel">
+          <h3>Центроид</h3>
+          <label>Слой</label>
+          <select id="cent-layer"></select>
+          <button onclick="createCentroid()">🎯 Вычислить центроиды</button>
+        </section>
+
+        <section class="panel">
+          <h3>Выпуклая оболочка</h3>
+          <label>Слой</label>
+          <select id="conv-layer"></select>
+          <button onclick="createConvexHull()">⬡ Построить оболочку</button>
+        </section>
+
+        <section class="panel">
+          <h3>Площадь / Длина</h3>
+          <label>Слой</label>
+          <select id="measure-layer"></select>
+          <button onclick="calcMeasure()">📏 Рассчитать</button>
+          <div id="measure-out" style="margin-top:8px;font-size:11px;color:var(--yellow)"></div>
+        </section>
+
+        <section class="panel">
+          <h3>Пересечение (intersect)</h3>
+          <label>Слой A (полигоны)</label>
+          <select id="int-a"></select>
+          <label>Слой B (полигоны)</label>
+          <select id="int-b"></select>
+          <button onclick="calcIntersect()">∩ Пересечение</button>
+        </section>
+
+        <section class="panel">
+          <h3>Объединение (union)</h3>
+          <label>Слой A</label>
+          <select id="uni-a"></select>
+          <label>Слой B</label>
+          <select id="uni-b"></select>
+          <button onclick="calcUnion()">∪ Объединить</button>
+        </section>
+
+        <section class="panel">
+          <h3>Фильтр по атрибуту</h3>
+          <label>Слой</label>
+          <select id="filt-layer" onchange="loadFilterFields()"></select>
+          <label>Поле</label>
+          <select id="filt-field"></select>
+          <label>Значение (точное совпадение)</label>
+          <input id="filt-value">
+          <button onclick="applyFilter()">🔍 Фильтровать</button>
+          <button class="secondary" onclick="clearFilter()">✖ Сбросить</button>
+        </section>
+
+        <section class="panel">
+          <h3>Точечная сетка</h3>
+          <label>Слой-ограничитель (полигон)</label>
+          <select id="grid-layer"></select>
+          <label>Шаг (км)</label>
+          <input type="number" id="grid-step" value="50">
+          <button onclick="createGrid()">🔲 Создать сетку</button>
+        </section>
+      </div>
+
+      <!-- STYLE -->
+      <div class="tab-content" id="tab-style">
+        <section class="panel">
+          <h3>Стиль активного слоя</h3>
+          <label>Слой</label>
+          <select id="style-layer" onchange="loadStyle()"></select>
+          <label>Цвет заливки</label>
+          <input type="color" id="st-fill" value="#8be9fd">
+          <label>Цвет обводки</label>
+          <input type="color" id="st-stroke" value="#f8f8f2">
+          <label>Прозрачность заливки</label>
+          <input type="range" id="st-opacity" min="0" max="1" step="0.05" value="0.4">
+          <label>Толщина обводки</label>
+          <input type="number" id="st-weight" value="2" min="0" max="20">
+          <label>Размер маркеров (точки)</label>
+          <input type="number" id="st-radius" value="6" min="1" max="50">
+          <button onclick="applyStyle()">💅 Применить</button>
+          <button class="secondary" onclick="randomStyle()">🎲 Случайные цвета</button>
+        </section>
+
+        <section class="panel">
+          <h3>Кластеризация</h3>
+          <label>Слой</label>
+          <select id="cl-layer"></select>
+          <label>Радиус (км)</label>
+          <input type="number" id="cl-radius" value="50">
+          <button onclick="clusterPoints()">🎯 Кластеры (точки)</button>
+        </section>
+
+        <section class="panel">
+          <h3>Хороплет</h3>
+<think>
+Пользователь попросил создать HTML-ресурс, и я начал его генерировать, но ответ был прерван. Мне нужно продолжить с того места, где он оборвался, и закончить HTML-файл. 
+
+Я создавал файл с:
+1. Подключением библиотек (Leaflet, Geoman, Turf.js, Leaflet Measure)
+2. CSS стилями для темной темы в стиле QGIS
+3. Структурой HTML с шапкой, боковой панелью с вкладками (Слои, Анализ, Стиль, Атрибуты)
+4. Различными инструментами анализа (буфер, центроид, выпуклая оболочка, пересечение и т.д.)
+
+Файл был прерван на разделе "Хороплет". Мне нужно:
+1. Завершить HTML-структуру
+2. Добавить карту
+3. Добавить нижнюю панель (статус бар)
+4. Написать весь JavaScript код для функциональности
+
+Это будет большой файл, но я должен завершить его полностью.
+</think>
+
+```html
+        <section class="panel">
+          <h3>Хороплет (по атрибуту)</h3>
+          <label>Слой (полигоны)</label>
+          <select id="choro-layer"></select>
+          <label>Поле (числовое)</label>
+          <input id="choro-field">
+          <button onclick="createChoropleth()">🎨 Создать хороплет</button>
+        </section>
+      </div>
+
+      <!-- DATA -->
+      <div class="tab-content" id="tab-data">
+        <section class="panel">
+          <h3>Таблица атрибутов</h3>
+          <label>Слой</label>
+          <select id="attr-layer" onchange="showAttributes()"></select>
+          <button onclick="showAttrTable()">📋 Открыть таблицу</button>
+          <button class="secondary" onclick="addAttribute()">➕ Добавить поле</button>
+        </section>
+
+        <section class="panel">
+          <h3>Редактор GeoJSON</h3>
+          <label>Слой</label>
+          <select id="json-layer" onchange="loadGeoJSON()"></select>
+          <textarea id="json-editor" placeholder="GeoJSON появится здесь..."></textarea>
+          <button onclick="updateFromJSON()">💾 Применить изменения</button>
+        </section>
+
+        <section class="panel">
+          <h3>Статистика</h3>
+          <label>Слой</label>
+          <select id="stat-layer"></select>
+          <button onclick="showStats()">📊 Показать статистику</button>
+          <div id="stats-out" style="margin-top:8px;font-size:11px"></div>
+        </section>
+      </div>
+    </aside>
+
+    <div id="map"></div>
+  </main>
+
+  <footer>
+    <span>📍 Координаты: <b id="coords">0, 0</b></span>
+    <span>🔍 Масштаб: <b id="zoom">1</b></span>
+    <span>📐 Проекция: <b>EPSG:3857 (Web Mercator)</b></span>
+    <span id="status-msg" style="color:var(--accent2)">Готов к работе</span>
+  </footer>
+</div>
+
+<div id="toast"></div>
+
+<!-- AUTH MODAL -->
+<div id="auth-modal" class="modal-bg" style="display:none">
+  <div class="modal">
+    <h2>🔐 Авторизация</h2>
+    <div id="auth-form">
+      <label>Логин</label>
+      <input id="auth-user" placeholder="username">
+      <label>Пароль</label>
+      <input id="auth-pass" type="password" placeholder="password">
+      <button onclick="login()" style="margin-top:10px">Войти</button>
+      <button class="secondary" onclick="register()">Зарегистрироваться</button>
+      <button class="danger" onclick="hideAuth()">Отмена</button>
+      <p style="font-size:11px;color:var(--muted);margin-top:10px">
+        Демо: admin / admin или создайте новый аккаунт
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ STATE ============
+const state = {
+  layers: {},
+  activeLayerId: null,
+  user: null,
+  layerCounter: 0
+};
+
+// ============ INIT MAP ============
+const map = L.map('map', {
+  center: [55.75, 37.62],
+  zoom: 5,
+  zoomControl: true
+});
+
+// Base layers
+const baseLayers = {
+  osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap',
+    maxZoom: 19
+  }),
+  sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri',
+    maxZoom: 19
+  }),
+  topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenTopoMap',
+    maxZoom: 17
+  }),
+  dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© CartoDB',
+    maxZoom: 19
+  }),
+  light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© CartoDB',
+    maxZoom: 19
+  }),
+  terrain: L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.jpg', {
+    attribution: '© Stamen',
+    maxZoom: 18
+  })
+};
+
+let currentBase = baseLayers.osm;
+currentBase.addTo(map);
+
+function changeBase(name) {
+  map.removeLayer(currentBase);
+  currentBase = baseLayers[name];
+  currentBase.addTo(map);
+  currentBase.bringToBack();
+  toast('Базовый слой изменён', 'success');
+}
+
+// ============ GEOMAN (EDITING) ============
+map.pm.addControls({
+  position: 'topleft',
+  drawCircle: false,
+  drawCircleMarker: true,
+  drawMarker: true,
+  drawPolyline: true,
+  drawRectangle: true,
+  drawPolygon: true,
+  drawText: true,
+  editMode: true,
+  dragMode: true,
+  cutPolygon: true,
+  removalMode: true,
+  rotateMode: true
+});
+
+map.pm.setGlobalOptions({
+  pmIgnore: false,
+  snapDistance: 15
+});
+
+// ============ COORDS & ZOOM ============
+map.on('mousemove', e => {
+  document.getElementById('coords').textContent = 
+    `${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
+});
+
+map.on('zoomend', () => {
+  document.getElementById('zoom').textContent = map.getZoom();
+});
+
+// ============ LAYER MANAGEMENT ============
+function addLayer(name, geojson, style = {}) {
+  const id = `layer_${++state.layerCounter}`;
+  const defaultStyle = {
+    color: '#8be9fd',
+    fillColor: '#8be9fd',
+    fillOpacity: 0.4,
+    weight: 2,
+    radius: 6,
+    ...style
+  };
+
+  const layer = L.geoJSON(geojson || {type:'FeatureCollection',features:[]}, {
+    style: defaultStyle,
+    pointToLayer: (feature, latlng) => {
+      return L.circleMarker(latlng, {
+        radius: defaultStyle.radius,
+        fillColor: defaultStyle.fillColor,
+        color: defaultStyle.color,
+        weight: defaultStyle.weight,
+        opacity: 1,
+        fillOpacity: defaultStyle.fillOpacity
+      });
+    },
+    onEachFeature: (feature, layer) => {
+      if (feature.properties) {
+        const props = Object.entries(feature.properties)
+          .map(([k,v]) => `<b>${k}:</b> ${v}`).join('<br>');
+        layer.bindPopup(props || 'Нет атрибутов');
+      }
+    }
+  }).addTo(map);
+
+  state.layers[id] = {
+    id,
+    name: name || `Слой ${state.layerCounter}`,
+    layer,
+    style: defaultStyle,
+    visible: true,
+    filter: null
+  };
+
+  state.activeLayerId = id;
+  refreshLayerList();
+  refreshSelects();
+  toast(`Слой "${name}" добавлен`, 'success');
+  return id;
+}
+
+function refreshLayerList() {
+  const list = document.getElementById('layer-list');
+  list.innerHTML = '';
+  document.getElementById('layer-count').textContent = Object.keys(state.layers).length;
+
+  Object.values(state.layers).forEach(l => {
+    const div = document.createElement('div');
+    div.className = 'layer-item' + (l.id === state.activeLayerId ? ' active' : '');
+    div.innerHTML = `
+      <input type="checkbox" ${l.visible ? 'checked' : ''} onchange="toggleLayer('${l.id}')">
+      <span class="lname" onclick="setActive('${l.id}')">${l.name}</span>
+      <div class="actions">
+        <button onclick="renameLayer('${l.id}')" title="Переименовать">✏️</button>
+        <button onclick="zoomToLayer('${l.id}')" title="Приблизить">🔍</button>
+        <button onclick="deleteLayer('${l.id}')" title="Удалить">🗑️</button>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function toggleLayer(id) {
+  const l = state.layers[id];
+  l.visible = !l.visible;
+  if (l.visible) {
+    map.addLayer(l.layer);
+  } else {
+    map.removeLayer(l.layer);
+  }
+}
+
+function setActive(id) {
+  state.activeLayerId = id;
+  refreshLayerList();
+}
+
+function renameLayer(id) {
+  const newName = prompt('Новое имя:', state.layers[id].name);
+  if (newName) {
+    state.layers[id].name = newName;
+    refreshLayerList();
+    refreshSelects();
+  }
+}
+
+function zoomToLayer(id) {
+  const bounds = state.layers[id].layer.getBounds();
+  if (bounds.isValid()) {
+    map.fitBounds(bounds, {padding: [50, 50]});
+  }
+}
+
+function deleteLayer(id) {
+  if (!confirm(`Удалить слой "${state.layers[id].name}"?`)) return;
+  map.removeLayer(state.layers[id].layer);
+  delete state.layers[id];
+  refreshLayerList();
+  refreshSelects();
+  toast('Слой удалён', 'success');
+}
+
+function addEmptyLayer() {
+  const name = prompt('Имя нового слоя:', `Новый слой ${state.layerCounter + 1}`);
+  if (name) addLayer(name, null);
+}
+
+function refreshSelects() {
+  const opts = Object.values(state.layers)
+    .map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+  
+  ['buf-layer','cent-layer','conv-layer','measure-layer','int-a','int-b',
+   'uni-a','uni-b','filt-layer','grid-layer','style-layer','cl-layer',
+   'choro-layer','attr-layer','json-layer','stat-layer'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = opts;
+  });
+}
+
+// ============ FILE LOADING ============
+function loadFiles(e) {
+  Array.from(e.target.files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const geojson = JSON.parse(ev.target.result);
+        addLayer(file.name.replace(/\.[^.]+$/, ''), geojson);
+      } catch (err) {
+        toast('Ошибка загрузки: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+  });
+  e.target.value = '';
+}
+
+function promptUrlLoad() {
+  const url = prompt('URL GeoJSON файла:');
+  if (!url) return;
+  toast('Загрузка...', 'info');
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      addLayer(url.split('/').pop() || 'URL Layer', data);
+    })
+    .catch(err => toast('Ошибка: ' + err.message, 'error'));
+}
+
+// ============ EXPORT ============
+function exportAll() {
+  Object.values(state.layers).forEach(l => {
+    const geojson = l.layer.toGeoJSON();
+    const blob = new Blob([JSON.stringify(geojson, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${l.name}.geojson`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+  toast('Экспорт завершён', 'success');
+}
+
+// ============ PROJECT SAVE/LOAD ============
+function saveProject() {
+  if (!state.user) {
+    toast('Войдите для сохранения проектов', 'error');
+    return;
+  }
+  const project = {
+    layers: Object.values(state.layers).map(l => ({
+      name: l.name,
+      geojson: l.layer.toGeoJSON(),
+      style: l.style
+    }))
+  };
+  const key = `qgis_project_${state.user.username}_${Date.now()}`;
+  localStorage.setItem(key, JSON.stringify(project));
+  toast('Проект сохранён', 'success');
+}
+
+function loadProject() {
+  if (!state.user) {
+    toast('Войдите для загрузки проектов', 'error');
+    return;
+  }
+  const keys = Object.keys(localStorage).filter(k => k.startsWith(`qgis_project_${state.user.username}_`));
+  if (keys.length === 0) {
+    toast('Нет сохранённых проектов', 'info');
+    return;
+  }
+  const key = prompt('Выберите проект:\n' + keys.map((k,i) => `${i+1}. ${k}`).join('\n'));
+  if (!key) return;
+  const idx = parseInt(key) - 1;
+  if (idx < 0 || idx >= keys.length) return;
+  
+  try {
+    const project = JSON.parse(localStorage.getItem(keys[idx]));
+    newProject();
+    project.layers.forEach(l => addLayer(l.name, l.geojson, l.style));
+    toast('Проект загружен', 'success');
+  } catch (err) {
+    toast('Ошибка загрузки: ' + err.message, 'error');
+  }
+}
+
+function newProject() {
+  if (!confirm('Создать новый проект? Текущие слои будут удалены.')) return;
+  Object.values(state.layers).forEach(l => map.removeLayer(l.layer));
+  state.layers = {};
+  state.layerCounter = 0;
+  refreshLayerList();
+  refreshSelects();
+  toast('Новый проект создан', 'success');
+}
+
+// ============ ANALYSIS TOOLS ============
+function getLayerGeoJSON(id) {
+  return state.layers[id]?.layer.toGeoJSON();
+}
+
+function createBuffer() {
+  const layerId = document.getElementById('buf-layer').value;
+  const radius = parseFloat(document.getElementById('buf-radius').value);
+  if (!layerId || !radius) return toast('Заполните все поля', 'error');
+  
+  const geojson = getLayerGeoJSON(layerId);
+  const buffered = turf.buffer(geojson, radius, {units: 'kilometers'});
+  addLayer(`${state.layers[layerId].name}_буфер_${radius}км`, buffered, {
+    color: '#ff5555',
+    fillColor: '#ff5555',
+    fillOpacity: 0.3
+  });
+}
+
+function createCentroid() {
+  const layerId = document.getElementById('cent-layer').value;
+  if (!layerId) return toast('Выберите слой', 'error');
+  
+  const geojson = getLayerGeoJSON(layerId);
+  const centroids = turf.centroid(geojson);
+  addLayer(`${state.layers[layerId].name}_центроиды`, centroids, {
+    color: '#50fa7b',
+    fillColor: '#50fa7b',
+    radius: 8
+  });
+}
+
+function createConvexHull() {
+  const layerId = document.getElementById('conv-layer').value;
+  if (!layerId) return toast('Выберите слой', 'error');
+  
+  const geojson = getLayerGeoJSON(layerId);
+  try {
+    const hull = turf.convex(geojson);
+    if (!hull) return toast('Невозможно построить оболочку', 'error');
+    addLayer(`${state.layers[layerId].name}_оболочка`, hull, {
+      color: '#f1fa8c',
+      fillColor: '#f1fa8c',
+      fillOpacity: 0.2,
+      weight: 3
+    });
+  } catch (err) {
+    toast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function calcMeasure() {
+  const layerId = document.getElementById('measure-layer').value;
+  if (!layerId) return toast('Выберите слой', 'error');
+  
+  const geojson = getLayerGeoJSON(layerId);
+  let result = '';
+  
+  geojson.features.forEach((f, i) => {
+    if (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon') {
+      const area = turf.area(f) / 1e6; // km²
+      result += `Объект ${i+1}: ${area.toFixed(2)} км²\n`;
+    } else if (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString') {
+      const length = turf.length(f, {units: 'kilometers'});
+      result += `Объект ${i+1}: ${length.toFixed(2)} км\n`;
+    }
+  });
+  
+  document.getElementById('measure-out').textContent = result || 'Нет полигонов/линий';
+}
+
+function calcIntersect() {
+  const aId = document.getElementById('int-a').value;
+  const bId = document.getElementById('int-b').value;
+  if (!aId || !bId) return toast('Выберите оба слоя', 'error');
+  
+  const a = getLayerGeoJSON(aId);
+  const b = getLayerGeoJSON(bId);
+  
+  try {
+    const features = [];
+    a.features.forEach(fa => {
+      b.features.forEach(fb => {
+        try {
+          const inter = turf.intersect(fa, fb);
+          if (inter) features.push(inter);
+        } catch(e) {}
+      });
+    });
+    
+    if (features.length === 0) return toast('Пересечений не найдено', 'info');
+    
+    const result = {type: 'FeatureCollection', features};
+    addLayer(`пересечение_${state.layers[aId].name}_${state.layers[bId].name}`, result, {
+      color: '#ff79c6',
+      fillColor: '#ff79c6',
+      fillOpacity: 0.5
+    });
+  } catch (err) {
+    toast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function calcUnion() {
+  const aId = document.getElementById('uni-a').value;
+  const bId = document.getElementById('uni-b').value;
+  if (!aId || !bId) return toast('Выберите оба слоя', 'error');
+  
+  const a = getLayerGeoJSON(aId);
+  const b = getLayerGeoJSON(bId);
+  
+  try {
+    let result = a.features[0];
+    a.features.slice(1).forEach(f => {
+      result = turf.union(result, f);
+    });
+    b.features.forEach(f => {
+      result = turf.union(result, f);
+    });
+    
+    addLayer(`объединение_${state.layers[aId].name}_${state.layers[bId].name}`, 
+      {type: 'FeatureCollection', features: [result]}, {
+      color: '#bd93f9',
+      fillColor: '#bd93f9',
+      fillOpacity: 0.4
+    });
+  } catch (err) {
+    toast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function loadFilterFields() {
+  const layerId = document.getElementById('filt-layer').value;
+  if (!layerId) return;
+  
+  const geojson = getLayerGeoJSON(layerId);
+  const fields = new Set();
+  geojson.features.forEach(f => {
+    if (f.properties) Object.keys(f.properties).forEach(k => fields.add(k));
+  });
+  
+  const sel = document.getElementById('filt-field');
+  sel.innerHTML = Array.from(fields).map(f => `<option value="${f}">${f}</option>`).join('');
+}
+
+function applyFilter() {
+  const layerId = document.getElementById('filt-layer').value;
+  const field = document.getElementById('filt-field').value;
+  const value = document.getElementById('filt-value').value;
+  
+  if (!layerId || !field) return toast('Заполните все поля', 'error');
+  
+  const geojson = getLayerGeoJSON(layerId);
+  const filtered = {
+    type: 'FeatureCollection',
+    features: geojson.features.filter(f => 
+      f.properties && String(f.properties[field]) === value
+    )
+  };
+  
+  addLayer(`${state.layers[layerId].name}_фильтр_${field}=${value}`, filtered);
+}
+
+function clearFilter() {
+  document.getElementById('filt-field').innerHTML = '';
+  document.getElementById('filt-value').value = '';
+}
+
+function createGrid() {
+  const layerId = document.getElementById('grid-layer').value;
+  const step = parseFloat(document.getElementById('grid-step').value);
+  if (!layerId || !step) return toast('Заполните все поля', 'error');
+  
+  const geojson = getLayerGeoJSON(layerId);
+  const bbox = turf.bbox(geojson);
+  
+  try {
+    const grid = turf.pointGrid(bbox, step, {units: 'kilometers'});
+    // Фильтруем точки внутри полигонов
+    const filtered = {
+      type: 'FeatureCollection',
+      features: grid.features.filter(p => 
+        turf.booleanPointInPolygon(p, geojson.features[0])
+      )
+    };
+    
+    addLayer(`сетка_${step}км`, filtered, {
+      color: '#ffb86c',
+      fillColor: '#ffb86c',
+      radius: 4
+    });
+  } catch (err) {
+    toast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+// ============ STYLING ============
+function loadStyle() {
+  const layerId = document.getElementById('style-layer').value;
+  if (!layerId) return;
+  
+  const style = state.layers[layerId].style;
+  document.getElementById('st-fill').value = style.fillColor;
+  document.getElementById('st-stroke').value = style.color;
+  document.getElementById('st-opacity').value = style.fillOpacity;
+  document.getElementById('st-weight').value = style.weight;
+  document.getElementById('st-radius').value = style.radius;
+}
+
+function applyStyle() {
+  const layerId = document.getElementById('style-layer').value;
+  if (!layerId) return toast('Выберите слой', 'error');
+  
+  const style = {
+    fillColor: document.getElementById('st-fill').value,
+    color: document.getElementById('st-stroke').value,
+    fillOpacity: parseFloat(document.getElementById('st-opacity').value),
+    weight: parseInt(document.getElementById('st-weight').value),
+    radius: parseInt(document.getElementById('st-radius').value)
+  };
+  
+  state.layers[layerId].style = style;
+  state.layers[layerId].layer.setStyle(style);
+  
+  // Обновить маркеры
+  state.layers[layerId].layer.eachLayer(l => {
+    if (l.setRadius) l.setRadius(style.radius);
+  });
+  
+  toast('Стиль применён', 'success');
+}
+
+function randomStyle() {
+  const r = () => Math.floor(Math.random() * 256);
+  const color = `#${r().toString(16).padStart(2,'0')}${r().toString(16).padStart(2,'0')}${r().toString(16).padStart(2,'0')}`;
+  document.getElementById('st-fill').value = color;
+  document.getElementById('st-stroke').value = color;
+}
+
+function clusterPoints() {
+  const layerId = document.getElementById('cl-layer').value;
+  const radius = parseFloat(document.getElementById('cl-radius').value);
+  if (!layerId || !radius) return toast('Заполните все поля', 'error');
+  
+  const geojson = getLayerGeoJSON(layerId);
+  const clusters = turf.clustersDbscan(geojson, radius, {units: 'kilometers', minPoints: 2});
+  
+  // Раскрасить по кластерам
+  const colors = ['#ff5555','#50fa7b','#8be9fd','#f1fa8c','#ff79c6','#bd93f9','#ffb86c'];
+  clusters.features.forEach((f, i) => {
+    f.properties.cluster_color = colors[f.properties.cluster % colors.length] || '#6272a4';
+  });
+  
+  addLayer(`${state.layers[layerId].name}_кластеры`, clusters, {
+    radius: 6
+  });
+  
+  // Применить цвета
+  const newLayerId = Object.keys(state.layers).pop();
+  state.layers[newLayerId].layer.eachLayer(l => {
+    const color = l.feature.properties.cluster_color;
+    l.setStyle({fillColor: color, color: color});
+  });
+}
+
+function createChoropleth() {
+  const layerId = document.getElementById('choro-layer').value;
+  const field = document.getElementById('choro-field').value;
+  if (!layerId || !field) return toast('Заполните все поля', 'error');
+  
+  const geojson = getLayerGeoJSON(layerId);
+  const values = geojson.features
+    .map(f => parseFloat(f.properties?.[field]))
+    .filter(v => !isNaN(v));
+  
+  if (values.length === 0) return toast('Нет числовых значений', 'error');
+  
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  
+  const getColor = v => {
+    const ratio = (v - min) / (max - min || 1);
+    const r = Math.floor(255 * ratio);
+    const b = Math.floor(255 * (1 - ratio));
+    return `rgb(${r},50,${b})`;
+  };
+  
+  geojson.features.forEach(f => {
+    const val = parseFloat(f.properties?.[field]);
+    f.properties._choro_color = isNaN(val) ? '#666' : getColor(val);
+  });
+  
+  addLayer(`${state.layers[layerId].name}_хороплет_${field}`, geojson);
+  
+  const newLayerId = Object.keys(state.layers).pop();
+  state.layers[newLayerId].layer.eachLayer(l => {
+    const color = l.feature.properties._choro_color;
+    l.setStyle({fillColor: color, color: '#fff', fillOpacity: 0.7});
+  });
+}
+
+// ============ ATTRIBUTES ============
+function showAttrTable() {
+  const layerId = document.getElementById('attr-layer').value;
+  if (!layerId) return toast('Выберите слой', 'error');
+  
+  const geojson = getLayerGeoJSON(layerId);
+  const fields = new Set();
+  geojson.features.forEach(f => {
+    if (f.properties) Object.keys(f.properties).forEach(k => fields.add(k));
+  });
+  
+  const headers = Array.from(fields);
+  let html = '<table><tr><th>#</th>';
+  headers.forEach(h => html += `<th>${h}</th>`);
+  html += '</tr>';
+  
+  geojson.features.forEach((f, i) => {
+    html += `<tr><td>${i+1}</td>`;
+    headers.forEach(h => html += `<td>${f.properties?.[h] ?? ''}</td>`);
+    html += '</tr>';
+  });
+  html += '</table>';
+  
+  showModal(`📋 Атрибуты: ${state.layers[layerId].name}`, html);
+}
+
+function addAttribute() {
+  const layerId = document.getElementById('attr-layer').value;
+  if (!layerId) return toast('Выберите слой', 'error');
+  
+  const name = prompt('Имя нового поля:');
+  if (!name) return;
+  const value = prompt('Значение по умолчанию:', '');
+  
+  const geojson = getLayerGeoJSON(layerId);
+  geojson.features.forEach(f => {
+    if (!f.properties) f.properties = {};
+    f.properties[name] = value;
+  });
+  
+  state.layers[layerId].layer.clearLayers();
+  state.layers[layerId].layer.addData(geojson);
+  toast(`Поле "${name}" добавлено`, 'success');
+}
+
+function showAttributes() {
+  const layerId = document.getElementById('attr-layer').value;
+  if (!layerId) return;
+  const geojson = getLayerGeoJSON(layerId);
+  const count = geojson.features.length;
+  const fields = new Set();
+  geojson.features.forEach(f => {
+    if (f.properties) Object.keys(f.properties).forEach(k => fields.add(k));
+  });
+  toast(`Объектов: ${count}, полей: ${fields.size}`, 'info');
+}
+
+function loadGeoJSON() {
+  const layerId = document.getElementById('json-layer').value;
+  if (!layerId) return;
+  const geojson = getLayerGeoJSON(layerId);
+  document.getElementById('json-editor').value = JSON.stringify(geojson, null, 2);
+}
+
+function updateFromJSON() {
+  const layerId = document.getElementById('json-layer').value;
+  if (!layerId) return toast('Выберите слой', 'error');
+  
+  try {
+    const geojson = JSON.parse(document.getElementById('json-editor').value);
+    state.layers[layerId].layer.clearLayers();
+    state.layers[layerId].layer.addData(geojson);
+    toast('GeoJSON обновлён', 'success');
+  } catch (err) {
+    toast('Ошибка JSON: ' + err.message, 'error');
+  }
+}
+
+function showStats() {
+  const layerId = document.getElementById('stat-layer').value;
+  if (!layerId) return toast('Выберите слой', 'error');
+  
+  const geojson = getLayerGeoJSON(layerId);
+  const stats = {
+    features: geojson.features.length,
+    points: 0,
+    lines: 0,
+    polygons: 0,
+    totalArea: 0,
+    totalLength: 0
+  };
+  
+  geojson.features.forEach(f => {
+    const type = f.geometry.type;
+    if (type.includes('Point')) stats.points++;
+    else if (type.includes('LineString')) {
+      stats.lines++;
+      stats.totalLength += turf.length(f, {units: 'kilometers'});
+    }
+    else if (type.includes('Polygon')) {
+      stats.polygons++;
+      stats.totalArea += turf.area(f) / 1e6;
+    }
+  });
+  
+  document.getElementById('stats-out').innerHTML = `
+    <b>Объектов:</b> ${stats.features}<br>
+    <b>Точек:</b> ${stats.points}<br>
+    <b>Линий:</b> ${stats.lines} (${stats.totalLength.toFixed(2)} км)<br>
+    <b>Полигонов:</b> ${stats.polygons} (${stats.totalArea.toFixed(2)} км²)
+  `;
+}
+
+// ============ AUTH ============
+function showAuth() {
+  document.getElementById('auth-modal').style.display = 'flex';
+}
+
+function hideAuth() {
+  document.getElementById('auth-modal').style.display = 'none';
+}
+
+function register() {
+  const username = document.getElementById('auth-user').value.trim();
+  const password = document.getElementById('auth-pass').value;
+  
+  if (!username || !password) return toast('Заполните все поля', 'error');
+  
+  const users = JSON.parse(localStorage.getItem('qgis_users') || '{}');
+  if (users[username]) return toast('Пользователь уже существует', 'error');
+  
+  users[username] = {password: btoa(password), created: Date.now()};
+  localStorage.setItem('qgis_users', JSON.stringify(users));
+  toast('Регистрация успешна! Теперь войдите.', 'success');
+}
+
+function login() {
+  const username = document.getElementById('auth-user').value.trim();
+  const password = document.getElementById('auth-pass').value;
+  
+  const users = JSON.parse(localStorage.getItem('qgis_users') || '{}');
+  
+  // Демо-аккаунт
+  if (username === 'admin' && password === 'admin') {
+    state.user = {username: 'admin', role: 'admin'};
+  } else if (users[username] && users[username].password === btoa(password)) {
+    state.user = {username, role: 'user'};
+  } else {
+    return toast('Неверный логин или пароль', 'error');
+  }
+  
+  document.getElementById('user-info').textContent = `👤 ${state.user.username}`;
+  document.getElementById('auth-btn').textContent = '🚪 Выйти';
+  document.getElementById('auth-btn').onclick = logout;
+  hideAuth();
+  toast(`Добро пожаловать, ${state.user.username}!`, 'success');
+}
+
+function logout() {
+  state.user = null;
+  document.getElementById('user-info').textContent = 'Гость';
+  document.getElementById('auth-btn').textContent = '🔐 Войти';
+  document.getElementById('auth-btn').onclick = showAuth;
+  toast('Вы вышли из системы', 'info');
+}
+
+// ============ UI HELPERS ============
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  btn.classList.add('active');
+}
+
+function showModal(title, content) {
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal"><h2>${title}</h2>${content}<button onclick="this.closest('.modal-bg').remove()" style="margin-top:15px">Закрыть</button></div>`;
+  bg.onclick = e => {if (e.target === bg) bg.remove()};
+  document.body.appendChild(bg);
+}
+
+function toast(msg, type = 'info') {
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  document.getElementById('toast').appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+function fitAll() {
+  const bounds = L.featureGroup(Object.values(state.layers).map(l => l.layer)).getBounds();
+  if (bounds.isValid()) map.fitBounds(bounds, {padding: [50, 50]});
+}
+
+function setStatus(msg) {
+  document.getElementById('status-msg').textContent = msg;
+}
+
+// ============ INIT ============
+toast('QGIS-Web загружен. Добро пожаловать!', 'success');
+setStatus('Готов к работе');
+
+// Добавляем демо-слой
+const demoGeoJSON = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: {name: 'Москва', population: 12600000},
+      geometry: {type: 'Point', coordinates: [37.6173, 55.7558]}
+    },
+    {
+      type: 'Feature',
+      properties: {name: 'Санкт-Петербург', population: 5400000},
+      geometry: {type: 'Point', coordinates: [30.3351, 59.9343]}
+    }
+  ]
+};
+addLayer('Демо: Города России', demoGeoJSON);
+</script>
+</body>
+</html>
